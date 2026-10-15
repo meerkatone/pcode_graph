@@ -38,8 +38,14 @@ mov ebx, eax
     )
 
     check_ops(graph, "INT_XOR", "CALLOTHER")
-    check_inputs(graph, "EDI", "#0x3c")
-    check_outputs(graph, "RAX", "RDI", "RBX")
+    
+    # For pypcode 4.0.0
+    # check_inputs(graph, "EDI", "#0x3c")  
+    # check_outputs(graph, "RAX", "RDI", "RBX")
+
+    # new behavior in pypcode 4.0.1
+    check_inputs(graph, 'rflags', '#0x9', '#0x3c', 'EDI')
+    check_outputs(graph, 'RDI', 'RAX', 'RCX', 'R11', 'RBX')
 
     (syscall,) = [
         index
