@@ -2,7 +2,7 @@ from dataclasses import dataclass, replace
 from enum import Enum, auto
 from typing import Iterator
 from pcode_graph.pcode import OpCodes
-from pcode_graph.utils import unsigned_to_signed
+from pcode_graph.bit_utils import unsigned_to_signed
 
 NodeIndex = int
 EdgeIndex = int
@@ -66,6 +66,9 @@ class Node:
 
     # Operation code
     opcode: OpCodes | None = None
+
+    # Name of user defined call for CALLOTHER operation
+    user_defined_callee: str | None = None
 
     def __post_init__(self):
         assert (self.kind == NodeKinds.Operation) ^ (self.opcode is None)

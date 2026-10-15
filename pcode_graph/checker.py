@@ -3,6 +3,12 @@ from pcode_graph.graph import CDG, EdgeKinds, NodeKinds
 from pcode_graph.pcode import NUM_OPERANDS, OpCodes
 
 
+# Node operands are either operation inputs or control successors.
+# There is only one successor except for the special successor of CBRANCH, CALL, CALLIND and CALLOTHER.
+# Only OutputRegister, Phi and CALLOTHER Operation can have more than 2 inputs.
+MAX_OPERANDS = 9
+
+
 def check_graph(graph: CDG):
     """Checks the coherency of this graph.
 
@@ -20,6 +26,7 @@ def check_graph(graph: CDG):
         has_cfg |= edge.kind == EdgeKinds.Control
         assert 0 <= edge.source_node < len(graph.nodes)
         assert 0 <= edge.destination_node < len(graph.nodes)
+        assert edge.operand_number is None or 0 <= edge.operand_number < MAX_OPERANDS
 
     # Check nodes attributes are coherent with node kind
     proxy_dict = graph.compute_edge_proxy()
@@ -84,6 +91,7 @@ def check_graph(graph: CDG):
                         OpCodes.CBRANCH,
                         OpCodes.CALLIND,
                         OpCodes.CALL,
+                        OpCodes.CALLOTHER,
                     }, f"Node {index} {node} with 2 successors"
                 case _:
                     raise AssertionError("Unexpected number of successors")

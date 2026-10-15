@@ -1,7 +1,7 @@
 from enum import Enum, auto
 import pypcode
 from pcode_graph.arch import Arch
-from pcode_graph.utils import unsigned_to_signed
+from pcode_graph.bit_utils import unsigned_to_signed
 
 
 # Replacement for native pypcode opcode (to ease pickling and dumping)

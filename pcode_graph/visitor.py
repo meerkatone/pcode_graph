@@ -45,7 +45,7 @@ class PcodeVisitor:
     def visit_branchind(self, *args, **kwargs): return self.visit_jump(*args, **kwargs)
     def visit_call(self, *args, **kwargs): return self.visit_branch(*args, **kwargs)
     def visit_callind(self, *args, **kwargs): return self.visit_branchind(*args, **kwargs)
-    def visit_callother(self, *args, **kwargs): return self.visit_default(*args, **kwargs)  # Note: callother is not a implemented as a branching instruction but is followed by one
+    def visit_callother(self, *args, **kwargs): return self.visit_jump(*args, **kwargs)
     def visit_cbranch(self, *args, **kwargs): return self.visit_jump(*args, **kwargs)
     def visit_copy(self, *args, **kwargs): return self.visit_unary(*args, **kwargs)
     def visit_float_abs(self, *args, **kwargs): return self.visit_unary(*args, **kwargs)

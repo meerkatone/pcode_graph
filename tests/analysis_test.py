@@ -35,7 +35,7 @@ mul x1, x0, x0
 
     assert prg.get_defs(3, wrap(i1)) == {1}
 
-    assert [prg.successors.get(i, []) for i in range(len(prg.operations))] == [
+    assert [prg.succ_ops(i) for i in range(len(prg.operations))] == [
         [1],
         [2],
         [3],
@@ -102,8 +102,8 @@ ret
         "x1": {3},
         "pc": {5},
     }
-    assert prg.reachable == [True] * 7
-    assert [prg.predecessors.get(i, set()) for i in range(7)] == [
+    assert all(prg.reachable(i) for i in range(7))
+    assert [prg.pred_ops(i) for i in range(7)] == [
         {EntryIndex},
         {0},
         {1},
@@ -127,14 +127,14 @@ label:      ret
         outdir,
     )
 
-    assert prg.reachable == [True] * len(prg.operations)
+    assert all(prg.reachable(i) for i in range(len(prg.operations)))
 
     assert [
         (
             i,
             o.opcode.__name__,
-            prg.predecessors.get(i, set()),
-            prg.successors.get(i, []),
+            prg.pred_ops(i),
+            prg.succ_ops(i),
         )
         for i, o in enumerate(prg.operations)
     ] == [
@@ -298,8 +298,8 @@ label:      nop
         (4, "IMARK"),
     ]
 
-    assert prg.predecessors[4] == {1, 3}
-    assert prg.successors[1] == [4, 2]
+    assert prg.pred_ops(4) == {1, 3}
+    assert prg.succ_ops(1) == [4, 2]
 
 
 def test_unreachable(outdir: Path, arm64: ArchContext):
@@ -324,8 +324,8 @@ mul x1, x0, x0
         (6, "INT_MULT"),
     ]
 
-    assert prg.reachable[0]
-    assert not prg.reachable[-1]
+    assert prg.reachable(0)
+    assert not prg.reachable(-1)
 
 
 def test_cfg_bug(outdir: Path, x86_64: ArchContext):
@@ -382,7 +382,7 @@ je loop
 """
     p = make_program_from_asm(asm, x86_64, outdir, base_address=0x54AE0)
 
-    assert len(p.predecessors[0]) == 2
+    assert len(p.pred_ops(0)) == 2
     sub_rsp = p.operations[1]
     assert sub_rsp.opcode == OpCode.INT_SUB
     assert sub_rsp.output is not None
@@ -390,6 +390,42 @@ je loop
 
     call = p.operations[3]
     assert call.opcode == OpCode.CALL
-    assert len(p.successors[3]) == 2
+    assert len(p.succ_ops(3)) == 2
     inputs = {var.pretty_name: defs for var, defs in p.iter_input_defs(1)}
     assert inputs["RSP"] == {EntryIndex, 1}
+
+
+def test_partial_register_writes(outdir: Path, x86_64: ArchContext):
+
+    prg = make_program_from_asm(
+        """
+mov rax, rbx
+mov ax, cx
+mov ah, dl
+mov rsi, rax
+mov rdi, rbx
+mov ebx, ecx
+""",
+        x86_64,
+        outdir,
+    )
+
+    def writer(name: str) -> int:
+        (index,) = [
+            index
+            for index, op in enumerate(prg.operations)
+            if op.output and str(wrap(op.output)) == name
+        ]
+        return index
+
+    rax, ax, ah, rsi = writer("RAX"), writer("AX"), writer("AH"), writer("RSI")
+    read_rax = {str(var): defs for var, defs in prg.iter_input_defs(rsi)}["RAX"]
+    assert read_rax == {rax, ax, ah}
+
+    # The 32 bits write is zero-extended by Sleigh: RBX is fully redefined
+    exit_defs = dump_exit_defs(prg)
+    assert exit_defs["RBX"] == {writer("RBX")}
+    assert "EBX" not in exit_defs
+    assert exit_defs["RAX"] == {rax}
+    assert exit_defs["AX"] == {ax}
+    assert exit_defs["AH"] == {ah}

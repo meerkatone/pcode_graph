@@ -2,6 +2,7 @@ from torch import Tensor
 import torch
 from torch_geometric.data import Data
 from pcode_graph.arch import Arch
+from pcode_graph.checker import MAX_OPERANDS
 from pcode_graph.pcode import OpCodes
 from pcode_graph.registers import ALIAS, CALLING_CONVENTIONS, PARENTS
 from pcode_graph.torch_utils import BinaryConverter
@@ -23,6 +24,7 @@ def map_registers(registers: set[str], arch: Arch) -> dict[str, Tensor]:
     for i, r in enumerate(kept_regs):
         mask = zeros.clone()
         mask[i] = 1
+        masks[r] = mask
 
     return masks
 
@@ -111,13 +113,6 @@ def node_to_tensor(
     return torch.cat(features)
 
 
-# Used to encode the order of operation inputs,
-# (except for OutputRegister, Phi and CALLOTHER Operation,
-# which can have more inputs) and the special successor
-# for CBRANCH, CALL and CALLIND.
-MAX_OPERAND_NUMBER = 2
-
-
 def graph_to_data(
     graph: CDG,
     registers_emb: dict[str, Tensor] | None = None,
@@ -126,6 +121,7 @@ def graph_to_data(
     max_value_bytes: int = 4,
     include_size: bool = False,
     include_output_registers_for_all_node: bool = False,
+    max_operands: int = MAX_OPERANDS,
 ) -> Data:
     """Converts this graph into pytorch geometric Data format.
 
@@ -178,13 +174,14 @@ def graph_to_data(
     # Gather edges by node
     assert len(EdgeKinds) == 2
     for edge in graph.edges:
-        attr = torch.zeros((2 + MAX_OPERAND_NUMBER,))
+        attr = torch.zeros((2 + max_operands,))
         if edge.kind == EdgeKinds.Data:
             attr[0] = 1
         else:
             attr[1] = 1
-        if edge.operand_number is not None and edge.operand_number < MAX_OPERAND_NUMBER:
-            attr[edge.operand_number + 2] = 1
+        if edge.operand_number is not None:
+            if edge.operand_number < max_operands:
+                attr[edge.operand_number + 2] = 1
 
         edge_src.append(edge.source_node)
         edge_dst.append(edge.destination_node)
@@ -192,7 +189,7 @@ def graph_to_data(
 
     if len(edge_attr) == 0:
         # Support for a graph without any edge
-        edges = torch.zeros((2, 2 + MAX_OPERAND_NUMBER, 0))
+        edges = torch.zeros((0, 2 + max_operands))
     else:
         edges = torch.stack(edge_attr)
 

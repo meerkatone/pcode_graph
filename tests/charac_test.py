@@ -1,6 +1,6 @@
 from csv import get_dialect
 
-from pcode_graph.charac import (
+from pcode_graph.characterization import (
     FunctionCharacteristics,
     get_function_characteristics,
     get_graph_diameters,

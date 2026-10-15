@@ -53,11 +53,11 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     """
 
     if flags is None:
-        flags = MakerFlags()    
+        flags = MakerFlags()
 
     black_list, white_list = flags.reg_outputs_black_list, flags.reg_outputs_white_list
     if black_list is None and white_list is None:
-        black_list = SPECIAL_REGISTERS[prg.arch]    
+        black_list = SPECIAL_REGISTERS[prg.arch]
 
     # Already created input nodes, by related input variable
     input_node_indexes: dict[Var, NodeIndex] = {}
@@ -113,9 +113,14 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
             newly_taken_ops.append((op_index, node_index))
             nodes.append(
                 Node(
-                    NodeKinds.Operation,
-                    op.output.size if op.output is not None else 0,
+                    kind=NodeKinds.Operation,
+                    size=op.output.size if op.output is not None else 0,
                     opcode=from_native_opcode(op.opcode),
+                    user_defined_callee=(
+                        op.inputs[0].getUserDefinedOpName()
+                        if op.opcode == OpCode.CALLOTHER
+                        else None
+                    ),
                 )
             )
             operation_node_indexes[op_index] = node_index
@@ -198,7 +203,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     for var, def_op_indexes in prg.get_exit_defs().items():
         assert def_op_indexes
         match var.kind:
-            case VarKinds.Register:                
+            case VarKinds.Register:
                 if white_list is not None:
                     if var.pretty_name not in white_list:
                         continue
@@ -239,10 +244,10 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     if flags.build_cfg:
         # Also add conditional branching or branching to unknown address
         for op_index, op in enumerate(prg.operations):
-            if not prg.reachable[op_index]:
+            if not prg.reachable(op_index):
                 continue
             if op.opcode == OpCode.CBRANCH or (
-                UnknownCodeIndex in prg.successors.get(op_index, set())
+                UnknownCodeIndex in prg.succ_ops(op_index)
                 and op.opcode != OpCode.IMARK
             ):
                 get_or_create_operation(op_index)
@@ -267,10 +272,10 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
 
         for op_index, node_index in operation_node_indexes.items():
 
-            if not prg.reachable[op_index]:
+            if not prg.reachable(op_index):
                 continue
 
-            successors = prg.successors.get(op_index, [])
+            successors = prg.succ_ops(op_index)
 
             for number, successor_op_index in enumerate(successors):
                 if successor_op_index < 0:  # ie. in {UnknownCodeIndex, ExitIndex}
@@ -288,7 +293,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
 
                     # Having more than one successor would imply being a CBRANCH,
                     # but CBRANCH are always put in the dataflow, see above.
-                    (successor_op_index,) = prg.successors[successor_op_index]
+                    (successor_op_index,) = prg.succ_ops(successor_op_index)
 
                     if successor_op_index in seen_ops:
                         logger.warning("Looping CFG without side effects")
@@ -316,10 +321,10 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
             add_control_edge(begin_index, get_or_create_terminal(ExitIndex), None)
         else:
             # Link the entry node to the first taken operation
-            # TODO: specify entry operation
+            # TODO: allow using an entry operation anywhere in the program
             entry_op_index = 0
             while entry_op_index not in operation_node_indexes:
-                successor_op_indexes = tuple(prg.successors.get(entry_op_index, ()))
+                successor_op_indexes = tuple(prg.succ_ops(entry_op_index))
                 assert len(successor_op_indexes) == 1
                 # Advance to next operation
                 entry_op_index = successor_op_indexes[0]

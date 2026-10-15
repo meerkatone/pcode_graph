@@ -9,7 +9,7 @@ from pcode_graph.graph import (
     RegisterId,
     Value,
 )
-from pcode_graph.utils import signed_to_unsigned, unsigned_to_signed
+from pcode_graph.bit_utils import signed_to_unsigned, unsigned_to_signed
 from pcode_graph.visitor import PcodeVisitor
 
 

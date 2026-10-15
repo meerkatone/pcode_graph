@@ -1,43 +1,21 @@
 from pytest import mark
-from pcode_graph.graph import CDG, EdgeKinds, NodeKinds
+from pcode_graph.graph import EdgeKinds, NodeKinds
 from pcode_graph.maker import MakerFlags
 from pcode_graph.pcode import OpCodes
 from pcode_graph.registers import SPECIAL_REGISTERS
 from .helpers import make_graph_from_asm
-from .fixtures import log, outdir, arm64, x86_64, ArchContext
+from .fixtures import (
+    check_inputs,
+    check_kinds,
+    check_ops,
+    check_outputs,
+    log,
+    outdir,
+    arm64,
+    x86_64,
+    ArchContext,
+)
 from pathlib import Path
-
-
-def check_inputs(g: CDG, *expected_names: str):
-    names = []
-    for n in g.nodes:
-        match n.kind:
-            case NodeKinds.ReadMemory | NodeKinds.InputRegister | NodeKinds.Constant:
-                names.append(str(n))
-    assert set(names) == set(expected_names)
-
-
-def check_outputs(g: CDG, *expected_names: str):
-    names = []
-    for n in g.nodes:
-        match n.kind:
-            case NodeKinds.WrittenMemory | NodeKinds.OutputRegister:
-                names.append(str(n))
-    assert set(names) == set(expected_names)
-
-
-def check_ops(g: CDG, *expected_opcodes: str):
-    assert sorted(
-        [
-            (n.opcode.name if n.opcode is not None else "NOP")
-            for n in g.nodes
-            if n.kind == NodeKinds.Operation
-        ]
-    ) == sorted(expected_opcodes)
-
-
-def check_kinds(g: CDG, *expected_kinds: NodeKinds):
-    assert {n.kind for n in g.nodes} == set(expected_kinds)
 
 
 def test_simple_copy(log, outdir: Path, arm64: ArchContext):
@@ -1154,3 +1132,24 @@ RET
                 node2 = g.nodes[n2]
                 if node2.kind == NodeKinds.Constant:
                     assert node2.value != 1, "Multiplication by 1 not simplified"
+
+
+
+def test_basic_blocks(outdir: Path, x86_64: ArchContext):
+
+    g = make_graph_from_asm(
+        """
+            add rax, rbx
+            mul rcx
+            jne label
+            add rcx, rax
+            mul rcx
+label:      add rbx, rax
+""",
+        x86_64,
+        outdir,
+    )
+
+    
+
+

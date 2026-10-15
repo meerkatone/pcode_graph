@@ -35,7 +35,7 @@ from loguru import logger
 import pypcode
 from pcode_graph.arch import Arch
 from pcode_graph.asm import Assembler
-from pcode_graph.charac import count_edges, get_graph_diameters
+from pcode_graph.characterization import count_edges, get_graph_diameters
 from pcode_graph.lief_importer import (
     get_function,
     iter_code_sections,

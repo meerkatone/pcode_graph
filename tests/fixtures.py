@@ -5,6 +5,7 @@ from pcode_graph.arch import Arch
 from pytest import fixture
 from loguru import logger
 from pcode_graph.asm import Assembler
+from pcode_graph.graph import CDG, NodeKinds
 from pcode_graph.log import setup_logger
 from pcode_graph.translator import Translator
 
@@ -68,3 +69,34 @@ def outdir(request) -> Path:
 def log(outdir: Path):
     setup_logger(outdir / "test.log")
     return logger
+
+
+def check_inputs(g: CDG, *expected_names: str):
+    names = []
+    for n in g.nodes:
+        match n.kind:
+            case NodeKinds.ReadMemory | NodeKinds.InputRegister | NodeKinds.Constant:
+                names.append(str(n))
+    assert set(names) == set(expected_names)
+
+
+def check_outputs(g: CDG, *expected_names: str):
+    names = []
+    for n in g.nodes:
+        match n.kind:
+            case NodeKinds.WrittenMemory | NodeKinds.OutputRegister:
+                names.append(str(n))
+    assert set(names) == set(expected_names)
+
+
+def check_ops(g: CDG, *expected_opcodes: str):
+    ops = [
+        (n.opcode.name if n.opcode is not None else "NOP")
+        for n in g.nodes
+        if n.kind == NodeKinds.Operation
+    ]
+    assert sorted(ops) == sorted(expected_opcodes)
+
+
+def check_kinds(g: CDG, *expected_kinds: NodeKinds):
+    assert {n.kind for n in g.nodes} == set(expected_kinds)

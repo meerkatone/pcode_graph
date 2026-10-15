@@ -6,7 +6,7 @@ from .helpers import make_graph_from_asm
 from pcode_graph.pcode import OpCodes
 from pcode_graph.gnn_exporter import (
     graph_to_data,
-    MAX_OPERAND_NUMBER,
+    MAX_OPERANDS,
     map_calling_convention_registers,
 )
 from .fixtures import (
@@ -65,4 +65,4 @@ br x16
     assert data.edge_index.shape == (2, num_edges)
 
     assert data.edge_attr is not None
-    assert data.edge_attr.shape == (num_edges, len(EdgeKinds) + MAX_OPERAND_NUMBER)
+    assert data.edge_attr.shape == (num_edges, len(EdgeKinds) + MAX_OPERANDS)

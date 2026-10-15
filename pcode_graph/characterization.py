@@ -12,13 +12,13 @@ from collections import deque
 from itertools import chain
 
 
-class Stats(NamedTuple):
+class GraphCharacteristics(NamedTuple):
     data_only: int
     control_only: int
     both: int
 
 
-def count_edges(cdg: CDG) -> Stats:
+def count_edges(cdg: CDG) -> GraphCharacteristics:
 
     data_only: int = 0
 
@@ -26,10 +26,10 @@ def count_edges(cdg: CDG) -> Stats:
         if edge.kind == EdgeKinds.Data:
             data_only += 1
 
-    return Stats(data_only, len(cdg.edges) - data_only, len(cdg.edges))
+    return GraphCharacteristics(data_only, len(cdg.edges) - data_only, len(cdg.edges))
 
 
-def get_graph_diameters(cdg: CDG) -> Stats:
+def get_graph_diameters(cdg: CDG) -> GraphCharacteristics:
     """Computes the diameter of the given graph."""
 
     n = len(cdg.nodes)
@@ -64,7 +64,7 @@ def get_graph_diameters(cdg: CDG) -> Stats:
             d = max(d, max(dist))
         return d
 
-    return Stats(
+    return GraphCharacteristics(
         diameter(build_adjacency(data_edges)),
         diameter(build_adjacency(ctrl_edges)),
         diameter(build_adjacency(chain(data_edges, ctrl_edges))),
