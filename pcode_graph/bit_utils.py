@@ -11,5 +11,3 @@ def signed_to_unsigned(value: int, size_bytes: int) -> int:
     """Converts the given signed value into an unsigned one."""
 
     return value + (value < 0) * (2 ** (size_bytes * 8))
-
-

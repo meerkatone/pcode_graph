@@ -6,6 +6,8 @@ from pcode_graph.characterization import (
     get_graph_diameters,
 )
 from pathlib import Path
+
+from pcode_graph.maker import MakerFlags
 from .fixtures import outdir, log, arm64, x86_64, ArchContext
 from tests.helpers import make_graph_from_asm
 
@@ -61,6 +63,7 @@ mul x3, x1, x2
 """,
         arm64,
         outdir,
+        flags=MakerFlags(basic_blocks=False),
     )
 
     d = get_graph_diameters(g)

@@ -19,7 +19,8 @@ Options:
     -c, --chunk <begin:end>     Pass "0xbeaf:0xdead" to lift only the chunk started at 0xbeaf and ending before 0xdead.
     -a, --arch <arch>           Use the given architecture (x86|arm|mips)_(64|32) or auto [Default: auto].
     -b, --base-address <int>    Consider the given assembly starts at given address [Default: 0].
-    -D, --dataflow-only         Only extract dataflow graph (and no control flow).
+    -D, --dataflow-only         Only extract dataflow graph (and no control flow), this implies -B.
+    -F, --flat-cfg              Disable basic block nodes in the graph.
     -o, --output <path>         Where to write the output.
     -h, --help                  This help.
     -d, --debug                 Debug mode: do no catch exceptions.
@@ -161,7 +162,10 @@ def main():
             print(rpl.dump())
             sys.exit(0)
 
-        flags = MakerFlags(build_cfg=not args["--dataflow-only"])
+        flags = MakerFlags(
+            build_cfg=not args["--dataflow-only"],
+            basic_blocks=not args["--flat-cfg"],
+        )
         cdg = make_graph(rpl, flags)
 
         if args["md"]:

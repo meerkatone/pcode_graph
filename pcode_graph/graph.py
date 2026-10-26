@@ -27,10 +27,14 @@ class NodeKinds(Enum):
     External = 8
     End = 9
 
+    BasicBlock = 10
+
 
 class EdgeKinds(Enum):
+
     Data = 0
     Control = 1
+    BasicBlockMembership = 2
 
 
 @dataclass(slots=True)
@@ -100,6 +104,8 @@ class Node:
                 return "EXTERNAL"
             case NodeKinds.End:
                 return "END"
+            case NodeKinds.BasicBlock:
+                return "BB"
             case _:
                 raise ValueError(self.kind)
 
@@ -152,7 +158,7 @@ class EdgeProxy:
         hasNumber = False
         for in_edge_index in self.in_edge_indexes:
             in_edge = self.graph.edges[in_edge_index]
-            if in_edge.kind == EdgeKinds.Control:
+            if in_edge.kind != EdgeKinds.Data:
                 continue
             n = in_edge.operand_number
             if n is None:
@@ -223,26 +229,27 @@ class CDG:
         s = ""
         for index, node in enumerate(self.nodes):
             match node.kind:
-                case NodeKinds.Begin | NodeKinds.End | NodeKinds.External:
-                    s += f"n{index}[[{node}]]\n"
                 case NodeKinds.Operation:
                     s += f"n{index}[{node}]\n"
+                case NodeKinds.Begin | NodeKinds.End | NodeKinds.External:
+                    s += f"n{index}[[{node}]]\n"
+                case NodeKinds.BasicBlock:
+                    s += f"n{index}[[{node}{index}]]\n"
                 case NodeKinds.Phi:
                     s += f"n{index}" + "{{" + f"{node}" + "}}\n"
                 case _:
                     s += f"n{index}(({node}))\n"
 
         for edge in self.edges:
-            link = "-->" if edge.kind == EdgeKinds.Data else "-.->"
+            link = {
+                EdgeKinds.Data: "==>",
+                EdgeKinds.Control: "-->",
+                EdgeKinds.BasicBlockMembership: "-.->",
+            }[edge.kind]
             rank = f"|{edge.operand_number}|" if edge.operand_number is not None else ""
             s += f"n{edge.source_node} {link}{rank} n{edge.destination_node}\n"
 
         return s
-
-    def dump_edge(self, edge: Edge) -> str:
-        link = "-->" if edge.kind == EdgeKinds.Data else "-.->"
-        rank = f"|{edge.operand_number}|" if edge.operand_number is not None else ""
-        return f"{self.nodes[edge.source_node]} {link}{rank} {self.nodes[edge.destination_node]}"
 
     def __str__(self) -> str:
         """Dumps the graph in markdown + mermaid format."""

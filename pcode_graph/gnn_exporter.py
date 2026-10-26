@@ -118,6 +118,7 @@ def graph_to_data(
     registers_emb: dict[str, Tensor] | None = None,
     opcodes_mapper: dict[OpCodes, int] | None = None,
     node_kinds_mapper: dict[NodeKinds, int] | None = None,
+    edge_kinds_mapper: dict[EdgeKinds, int] | None = None,
     max_value_bytes: int = 4,
     include_size: bool = False,
     include_output_registers_for_all_node: bool = False,
@@ -131,11 +132,14 @@ def graph_to_data(
             to encode in node features. Registers not found in the dict will be encoded as full-zero.
             You can pass None to avoid any register encoding in node features.
         opcodes_mapper (dict[OpCodes, int]): A dict mapping Operation OpCodes into zero-based indexes.
-          OpCodes are one-hot encoded. OpCodes not found in the dict are converted to zero.
+          OpCodes are one-hot encoded. OpCodes not found in the dict lead to a full of zeros vector.
           Pass None to use the whole list of supported opcodes.
         node_kinds_mapper (dict[NodeKinds, int]): A dict mapping node kinds into zero-based indexes.
           Node kinds are one-hot encoded. Node kinds not found in the dict are converted to zero.
           Pass None to use the whole list of node kinds.
+        edge_kinds_mapper (dict[EdgeKinds, int]): A dict mapping edge kinds into zero-based indexes.
+          Edge kinds are one-hot encoded. Edge kinds not found in the dict are converted to zero.
+          Pass None to use the whole list of edge kinds.
         max_value_bytes (int): Maximum bytes to encode when putting constant values in the graph.
         include_size (bool): Whether to add sizes in node features.
         include_output_registers_for_all_node (bool): Whether to include output register for all node
@@ -158,6 +162,10 @@ def graph_to_data(
     if node_kinds_mapper is None:
         node_kinds_mapper = {k: k.value for k in NodeKinds}
 
+    if edge_kinds_mapper is None:
+        edge_kinds_mapper = {k: k.value for k in EdgeKinds}
+    num_edge_kinds = len(edge_kinds_mapper)
+
     for index, node in enumerate(graph.nodes):
         node_features = node_to_tensor(
             node,
@@ -172,16 +180,13 @@ def graph_to_data(
         features.append(node_features)
 
     # Gather edges by node
-    assert len(EdgeKinds) == 2
     for edge in graph.edges:
-        attr = torch.zeros((2 + max_operands,))
-        if edge.kind == EdgeKinds.Data:
-            attr[0] = 1
-        else:
-            attr[1] = 1
+        attr = torch.zeros((num_edge_kinds + max_operands,))
+        if edge.kind in edge_kinds_mapper:
+            attr[edge_kinds_mapper[edge.kind]] = 1
         if edge.operand_number is not None:
             if edge.operand_number < max_operands:
-                attr[edge.operand_number + 2] = 1
+                attr[edge.operand_number + num_edge_kinds] = 1
 
         edge_src.append(edge.source_node)
         edge_dst.append(edge.destination_node)
@@ -189,7 +194,7 @@ def graph_to_data(
 
     if len(edge_attr) == 0:
         # Support for a graph without any edge
-        edges = torch.zeros((0, 2 + max_operands))
+        edges = torch.zeros((0, num_edge_kinds + max_operands))
     else:
         edges = torch.stack(edge_attr)
 

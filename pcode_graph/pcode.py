@@ -184,4 +184,3 @@ def dump_operation(op: pypcode.PcodeOp) -> str:
         s += op.opcode.name.lower() + " "
     s += ", ".join(dump_variable(v) for v in op.inputs)
     return s
-

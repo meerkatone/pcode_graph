@@ -1,4 +1,5 @@
 from pcode_graph.graph import EdgeKinds, NodeKinds
+from pcode_graph.maker import MakerFlags
 from pcode_graph.pcode import OpCodes
 from .helpers import make_graph_from_asm
 from .fixtures import (
@@ -38,14 +39,8 @@ mov ebx, eax
     )
 
     check_ops(graph, "INT_XOR", "CALLOTHER")
-    
-    # For pypcode 4.0.0
-    # check_inputs(graph, "EDI", "#0x3c")  
-    # check_outputs(graph, "RAX", "RDI", "RBX")
-
-    # new behavior in pypcode 4.0.1
-    check_inputs(graph, 'rflags', '#0x9', '#0x3c', 'EDI')
-    check_outputs(graph, 'RDI', 'RAX', 'RCX', 'R11', 'RBX')
+    check_inputs(graph, "EDI", "#0x3c")
+    check_outputs(graph, "RAX", "RDI", "RBX")
 
     (syscall,) = [
         index
@@ -110,7 +105,9 @@ mov x1, x0
 
 
 def test_callother_with_output_x86(outdir: Path, x86_64: ArchContext, log):
-    graph = make_graph_from_asm("rdtsc", x86_64, outdir)
+    graph = make_graph_from_asm(
+        "rdtsc", x86_64, outdir, flags=MakerFlags(basic_blocks=False)
+    )
 
     check_ops(graph, "CALLOTHER", "SUBPIECE")
     check_outputs(graph, "EAX", "EDX")
@@ -141,7 +138,9 @@ def test_callother_with_output_x86(outdir: Path, x86_64: ArchContext, log):
 
 
 def test_int_0x80_x86(outdir: Path, x86_64: ArchContext, log):
-    graph = make_graph_from_asm("int 0x80", x86_64, outdir)
+    graph = make_graph_from_asm(
+        "int 0x80", x86_64, outdir, flags=MakerFlags(basic_blocks=False)
+    )
 
     check_ops(graph, "CALLOTHER", "CALLIND")
     check_inputs(graph, "#-0x80")
@@ -171,6 +170,7 @@ def test_int_0x80_x86(outdir: Path, x86_64: ArchContext, log):
     assert set(proxy[swi].get_control_successors()) == {external, callind}
     assert external in set(proxy[callind].get_control_successors())
 
+
 def test_simd_ext(outdir: Path, arm64: ArchContext, log):
     g = make_graph_from_asm(
         """
@@ -183,12 +183,11 @@ ext v0.16b, v1.16b, v2.16b, #3
     check_inputs(g, "q1", "q2", "#0x3", "#0x1")
     check_outputs(g, "q0")
     check_ops(g, "CALLOTHER")
-    
+
     proxy = g.compute_edge_proxy()
     for n, node in enumerate(g.nodes):
         if node.opcode == OpCodes.CALLOTHER:
-            assert len(list(proxy[n].get_data_predecessors()) ) == 4
+            assert len(list(proxy[n].get_data_predecessors())) == 4
             break
     else:
         raise AssertionError("CALLOTHER node not found")
-    

@@ -174,7 +174,12 @@ class Translator:
                     offset=offset,
                     max_bytes=window,
                 ).ops
-            except (IndexError, pypcode.BadDataError, pypcode.UnimplError, pypcode.LowlevelError):
+            except (
+                IndexError,
+                pypcode.BadDataError,
+                pypcode.UnimplError,
+                pypcode.LowlevelError,
+            ):
                 ops = []
 
             chunk: list[pypcode.PcodeOp] = []
@@ -207,13 +212,13 @@ class Translator:
                 stats.lifted_bytes += consumed_bytes
                 stats.num_instructions += num_instructions
                 yield ChunkOps(num_instructions, window_base, chunk)
-                offset += consumed_bytes                
+                offset += consumed_bytes
 
             if truncated:
                 stats.truncated_bytes += len(data) - offset
                 return
 
-            if consumed_bytes == 0:                    
+            if consumed_bytes == 0:
                 # Nothing decodable at `offset`: resynchronise.
                 stats.skipped_bytes += min(self.alignment, len(data) - offset)
                 stats.resyncs += 1

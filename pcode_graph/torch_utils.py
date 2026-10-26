@@ -1,5 +1,6 @@
 import torch
 
+
 class BinaryConverter:
     """Helper to convert between scalar tensor and tensor of bits"""
 

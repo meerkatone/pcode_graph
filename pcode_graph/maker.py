@@ -10,6 +10,7 @@ from pcode_graph.analysis import (
     VarKinds,
 )
 from pcode_graph.asm import Assembler
+from pcode_graph.basic_blocks import make_basic_blocks
 from pcode_graph.checker import check_graph
 from pcode_graph.graph import CDG, Edge, EdgeKinds, NodeIndex, NodeKinds, Node
 from pcode_graph.pcode import from_native_opcode
@@ -38,6 +39,12 @@ class MakerFlags:
     """Consider only the given registers as graph outputs to simplify the graphs.
     Arch-dependent register names.
     If white-list is not None, the value of black-list is ignored.
+    """
+
+    basic_blocks: bool = True
+    """Group operations by basic block in the graph. Make it invariant
+    by instruction reordering and to reduce its diameter.
+    Requires build_cfg. Defaults to True.
     """
 
 
@@ -247,8 +254,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
             if not prg.reachable(op_index):
                 continue
             if op.opcode == OpCode.CBRANCH or (
-                UnknownCodeIndex in prg.succ_ops(op_index)
-                and op.opcode != OpCode.IMARK
+                UnknownCodeIndex in prg.succ_ops(op_index) and op.opcode != OpCode.IMARK
             ):
                 get_or_create_operation(op_index)
 
@@ -336,6 +342,12 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     # check_graph(graph)
 
     GraphSimplifier(graph).process()
+
+    # check_graph(graph)
+
+    if flags.build_cfg and flags.basic_blocks:
+        make_basic_blocks(graph)
+
     check_graph(graph)
 
     return graph

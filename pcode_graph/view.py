@@ -25,20 +25,24 @@ def draw_graph(
 
         match node.kind:
             case NodeKinds.InputRegister | NodeKinds.ReadMemory:
-                style = dict(color="#c0d0ff")  # Light Blue
+                style = dict(color="#c0c0ff")  # Light Blue
             case NodeKinds.OutputRegister | NodeKinds.WrittenMemory:
                 style = dict(color="#7070da")  # Blue
             case NodeKinds.Constant:
                 style = dict(color="#ff8080")  # Red
             case NodeKinds.Begin | NodeKinds.End | NodeKinds.External:
-                style = dict(color="#70d660", shape="box")
-            case NodeKinds.Operation | NodeKinds.Phi:
+                style = dict(color="#60d060", shape="box")
+            case NodeKinds.BasicBlock:
+                style = dict(color="#c5c5c5", shape="box")
+            case NodeKinds.Phi:
+                style = dict(color="#c0c0ff", shape="diamond")
+            case NodeKinds.Operation:
                 if node.opcode in JUMP_OPCODES:
                     # Jumps in light Green
-                    style = dict(color="#ab2a", shape="box")
+                    style = dict(color="#60d060", shape="box")
                 else:
                     # Other operations in Grey
-                    style = dict(color="#d1c5c5", shape="box")
+                    style = dict(color="#c5c5c5", shape="box")
             case _:
                 raise ValueError(node.kind)
 
@@ -48,15 +52,21 @@ def draw_graph(
         style["label"] = label
         network.add_node(index, **style)
 
+    edge_colors = {
+        EdgeKinds.Data: "#a0a0e0",
+        EdgeKinds.Control: "#40c040",
+        EdgeKinds.BasicBlockMembership: "#808080",
+    }
+
     # Create edges
     for edge in graph.edges:
         network.add_edge(
-                edge.source_node,
-                edge.destination_node,
-                style={"dashes": edge.kind == EdgeKinds.Control},
-                label=str(edge.operand_number) if edge.operand_number is not None else "",
-                color="#a1a5c5" if edge.kind == EdgeKinds.Data else "#70d660",
-            )
+            edge.source_node,
+            edge.destination_node,
+            style={"dashes": edge.kind == EdgeKinds.Control},
+            label=str(edge.operand_number) if edge.operand_number is not None else "",
+            color=edge_colors[edge.kind],
+        )
 
     # Layout
     network.force_atlas_2based(spring_length=75)

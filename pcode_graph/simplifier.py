@@ -1,4 +1,3 @@
-
 from pcode_graph.checker import check_graph
 from pcode_graph.graph import (
     CDG,
@@ -132,7 +131,7 @@ class GraphSimplifier:
                         # Keep this Phi node
                         continue
 
-                    self._remove_node(index)                    
+                    self._remove_node(index)
 
                 elif node.opcode == OpCodes.COPY:
 

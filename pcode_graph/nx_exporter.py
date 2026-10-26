@@ -10,11 +10,12 @@ def export_to_networkx(graph: CDG, ignore_cfg: bool) -> nx.MultiDiGraph:
     for n, node in enumerate(graph.nodes):
         ng.add_node(n, **asdict(node))
     for e in graph.edges:
-        if ignore_cfg and e.kind == EdgeKinds.Control:
+        if ignore_cfg and e.kind != EdgeKinds.Data:
             continue
-        ng.add_edge(e.source_node, e.destination_node, kind=e.kind.name, operand_number=e.operand_number,)
+        ng.add_edge(
+            e.source_node,
+            e.destination_node,
+            kind=e.kind.name,
+            operand_number=e.operand_number,
+        )
     return ng
-
-
-
-

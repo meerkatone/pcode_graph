@@ -383,6 +383,7 @@ ret
 """,
         x86_64,
         outdir,
+        flags=MakerFlags(basic_blocks=False),
     )
 
     proxy = g.compute_edge_proxy()
@@ -1132,24 +1133,3 @@ RET
                 node2 = g.nodes[n2]
                 if node2.kind == NodeKinds.Constant:
                     assert node2.value != 1, "Multiplication by 1 not simplified"
-
-
-
-def test_basic_blocks(outdir: Path, x86_64: ArchContext):
-
-    g = make_graph_from_asm(
-        """
-            add rax, rbx
-            mul rcx
-            jne label
-            add rcx, rax
-            mul rcx
-label:      add rbx, rax
-""",
-        x86_64,
-        outdir,
-    )
-
-    
-
-

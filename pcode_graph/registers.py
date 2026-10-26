@@ -1,4 +1,3 @@
-
 from .arch import Arch
 
 """Exact register aliasing groups for pypcode / Ghidra SLEIGH.

@@ -270,7 +270,8 @@ class RichPcodeList:
 
     def iter_inputs(self, index: OpIndex) -> Iterator[Var]:
         """Iterates operation inputs, skipping **special** ones
-        that have no semantic interest to put in the graph (see P-Code documentation)."""
+        that have no semantic interest to put in the graph (see P-Code documentation).
+        """
 
         op = self.operations[index]
         if op.opcode == OpCode.LOAD:
@@ -313,7 +314,7 @@ class InstructionAddressCollector(PassBase):
 
 class CFGBuilder(PassBase):
 
-    def __call__(self):        
+    def __call__(self):
         # Successors of jumping operations
         self._jumps: dict[OpIndex, list[OpIndex]] = {}
         for index, op in enumerate(self.program.operations):
@@ -328,7 +329,9 @@ class CFGBuilder(PassBase):
         self.program.basic_blocks = []
         self.program.block_indexes = []
         for start, end in zip(sorted_leaders, sorted_leaders[1:] + [op_count]):
-            self.program.block_indexes.extend([len(self.program.basic_blocks)] * (end - start))
+            self.program.block_indexes.extend(
+                [len(self.program.basic_blocks)] * (end - start)
+            )
             self.program.basic_blocks.append(BasicBlock(start, end))
 
         for block_index, block in enumerate(self.program.basic_blocks):

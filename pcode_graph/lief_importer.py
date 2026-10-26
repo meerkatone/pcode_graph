@@ -29,7 +29,7 @@ class FunctionOps(ChunkOps):
 
 
 def parse_binary(binary_path: Path) -> lief.Binary:
-    assert binary_path.is_file(), f"{binary_path} is not a file"    
+    assert binary_path.is_file(), f"{binary_path} is not a file"
     logger.debug(f"Parse {binary_path}")
     b = lief.parse(binary_path.as_posix())
     assert isinstance(b, lief.Binary)
@@ -289,11 +289,9 @@ def collect_basic_blocks(
 
 def collect_chunks(
     binary: Path | lief.Binary,
-    translator: Translator,    
-    
+    translator: Translator,
 ) -> Iterator[ChunkOps]:
     """Extracts the P-Code operations of the sections found in a binary, using LIEF library."""
 
     for section in iter_code_sections(binary):
-        yield from translator.iter_operations(section.content, section.address)        
-        
+        yield from translator.iter_operations(section.content, section.address)
