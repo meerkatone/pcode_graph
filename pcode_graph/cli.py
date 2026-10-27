@@ -19,7 +19,7 @@ Options:
     -c, --chunk <begin:end>     Pass "0xbeaf:0xdead" to lift only the chunk started at 0xbeaf and ending before 0xdead.
     -a, --arch <arch>           Use the given architecture (x86|arm|mips)_(64|32) or auto [Default: auto].
     -b, --base-address <int>    Consider the given assembly starts at given address [Default: 0].
-    -D, --dataflow-only         Only extract dataflow graph (and no control flow), this implies -B.
+    -D, --dataflow-only         Only extract dataflow graph (and no control flow), this implies -F.
     -F, --flat-cfg              Disable basic block nodes in the graph.
     -o, --output <path>         Where to write the output.
     -h, --help                  This help.

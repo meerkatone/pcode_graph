@@ -39,8 +39,8 @@ mov ebx, eax
     )
 
     check_ops(graph, "INT_XOR", "CALLOTHER")
-    check_inputs(graph, "EDI", "#0x3c")
-    check_outputs(graph, "RAX", "RDI", "RBX")
+    check_inputs(graph, "rflags", "#0x9", "EDI", "#0x3c")
+    check_outputs(graph, "RCX", "R11", "RAX", "RDI", "RBX")
 
     (syscall,) = [
         index
