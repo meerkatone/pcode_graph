@@ -21,6 +21,7 @@ Options:
     -b, --base-address <int>    Consider the given assembly starts at given address [Default: 0].
     -D, --dataflow-only         Only extract dataflow graph (and no control flow), this implies -F.
     -F, --flat-cfg              Disable basic block nodes in the graph.
+    -m, --memory-analysis       Try to link loads and stores without any assumption on ABI.
     -o, --output <path>         Where to write the output.
     -h, --help                  This help.
     -d, --debug                 Debug mode: do no catch exceptions.
@@ -165,6 +166,7 @@ def main():
         flags = MakerFlags(
             build_cfg=not args["--dataflow-only"],
             basic_blocks=not args["--flat-cfg"],
+            memory_analysis=args["--memory-analysis"],
         )
         cdg = make_graph(rpl, flags)
 

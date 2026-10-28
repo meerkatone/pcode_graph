@@ -34,6 +34,21 @@ def mips_64() -> ArchContext:
     return ArchContext(Arch.mips_64)
 
 
+@fixture(scope="session")
+def arm32() -> ArchContext:
+    return ArchContext(Arch.arm_32)
+
+
+@fixture(scope="session")
+def x86_32() -> ArchContext:
+    return ArchContext(Arch.x86_32)
+
+
+@fixture(scope="session")
+def mips_32() -> ArchContext:
+    return ArchContext(Arch.mips_32)
+
+
 @fixture
 def outdir(request) -> Path:
     """Creates a fresh test unique directory for generated files,

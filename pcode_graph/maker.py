@@ -1,18 +1,21 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from pcode_graph.analysis import (
     EntryIndex,
     OpIndex,
     RichPcodeList,
+    MEMORY,
     UnknownCodeIndex,
     ExitIndex,
     Var,
     VarKinds,
+    wrap,
 )
 from pcode_graph.asm import Assembler
 from pcode_graph.basic_blocks import make_basic_blocks
 from pcode_graph.checker import check_graph
 from pcode_graph.graph import CDG, Edge, EdgeKinds, NodeIndex, NodeKinds, Node
+from pcode_graph.memory import StackMemory, analyze_stack_memory
 from pcode_graph.pcode import from_native_opcode
 from pcode_graph.registers import SPECIAL_REGISTERS
 from pcode_graph.simplifier import GraphSimplifier
@@ -47,6 +50,12 @@ class MakerFlags:
     Requires build_cfg. Defaults to True.
     """
 
+    memory_analysis: bool = False
+    """Resolve stack accesses to link LOADs to the STORE they read, and forward
+    stored values to the users of LOADs when possible.
+    Mainly useful for code compiled without optimization. Defaults to False.
+    """
+
 
 def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     """Makes a graph from a list of P-Code operations.
@@ -66,6 +75,8 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     if black_list is None and white_list is None:
         black_list = SPECIAL_REGISTERS[prg.arch]
 
+    memory = analyze_stack_memory(prg) if flags.memory_analysis else StackMemory()
+
     # Already created input nodes, by related input variable
     input_node_indexes: dict[Var, NodeIndex] = {}
 
@@ -74,7 +85,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
 
     # Already created phi nodes, by (sorted) possible alternatives
     # to avoid duplicate phi nodes
-    phi_node_indexes: dict[tuple[NodeIndex, NodeIndex], NodeIndex] = {}
+    phi_node_indexes: dict[tuple[NodeIndex, ...], NodeIndex] = {}
 
     # Created nodes of all kinds
     nodes: list[Node] = []
@@ -169,6 +180,35 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     ):
         edges.append(Edge(from_node, to_node, EdgeKinds.Data, operand_number))
 
+    def get_pred_nodes(var: Var, def_op_indexes: set[OpIndex]) -> list[NodeIndex]:
+        """Returns the nodes defining the given variable,
+        replacing forwarded loads by the definitions of the stored values."""
+
+        pred_node_indexes: list[NodeIndex] = []
+        seen_loads: set[OpIndex] = set()
+        pending = [(var, def_op_indexes)]
+        while pending:
+            var, def_op_indexes = pending.pop()
+            # Sort defs to remain determinist
+            for def_op_index in sorted(def_op_indexes):
+                store_indexes = memory.forwarded_loads.get(def_op_index)
+                if store_indexes is not None:
+                    if def_op_index not in seen_loads:
+                        seen_loads.add(def_op_index)
+                        for store_index in store_indexes:
+                            value = wrap(prg.operations[store_index].inputs[2])
+                            value_defs = prg.get_defs(store_index, value)
+                            pending.append((value, value_defs or {EntryIndex}))
+                    continue
+                if def_op_index == EntryIndex:
+                    # Input variable
+                    pred_node_index = get_or_create_input(var)
+                else:
+                    pred_node_index = get_or_create_operation(def_op_index)
+                if pred_node_index not in pred_node_indexes:
+                    pred_node_indexes.append(pred_node_index)
+        return pred_node_indexes
+
     def link_defs(
         var: Var,
         def_op_indexes: set[OpIndex],
@@ -177,14 +217,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     ):
 
         # Collect data preds to see if we need a phi node
-        # Sort defs to remain determinist
-        pred_node_indexes = []
-        for def_op_index in sorted(list(def_op_indexes)):
-            if def_op_index == EntryIndex:
-                # Input variable
-                pred_node_indexes.append(get_or_create_input(var))
-            else:
-                pred_node_indexes.append(get_or_create_operation(def_op_index))
+        pred_node_indexes = get_pred_nodes(var, def_op_indexes)
 
         if len(pred_node_indexes) == 1:
             # Simple def, direct link
@@ -263,6 +296,9 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
         op_index, node_index = newly_taken_ops.pop()
 
         for number, (var, defs) in enumerate(prg.iter_input_defs(op_index)):
+
+            if var == MEMORY and op_index in memory.load_defs:
+                defs = memory.load_defs[op_index]
 
             if not defs:
                 # No definition means this is a constant

@@ -113,6 +113,27 @@ mul x1, x0, x0
 graph = make_graph_from_asm(assembler, translator, asm)
 ```
 
+### Stack memory analysis
+
+By default, memory is a single variable: every load reads the `MEMORY` input and all the
+stores reaching it. The `memory_analysis` flag resolves the addresses relative to the stack
+pointer at entry, to link each stack load to the stores it actually reads. This mainly
+helps with code compiled without optimization (`-O0`), where variables are spilled:
+
+```python
+graph = make_graph_from_asm(assembler, translator, asm,
+                            flags=MakerFlags(memory_analysis=True))
+```
+
+- A load reading exactly the value of its defining store(s) is removed, and the stored
+  value is linked directly to its users (through a phi node if several stores reach it).
+- A load partially overlapping stores keeps its LOAD node, linked to these stores only.
+- No assumption is made on the stack usage: calls to unknown code and stores to unresolved
+  addresses may write anywhere, so the loads they reach keep the single `MEMORY` model, and all stores
+  remain memory outputs.
+
+The same option is available in command-line as `--memory-analysis`.
+
 ### View the graph
 
 You can unparse the graph into markdown using the mermaid syntax:

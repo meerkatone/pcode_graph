@@ -1,3 +1,7 @@
+# 2.1.0
+
+- Add stack memory analysis to resolve loads whenever it possible, mainly for code compiled with -O0.
+
 # 2.0.0
 
 - Add basic blocks node in the graph, to make the graph invariant by instruction reordering, while reducing its diameter. The previous format is still available by setting maker flags. Because of new "membership" edge kind, the number of egde features changed.
