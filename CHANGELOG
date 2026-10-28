@@ -1,4 +1,4 @@
-# 2.1.0
+# 3.0.0
 
 - Add stack memory analysis to resolve loads whenever it possible, mainly for code compiled with -O0.
 

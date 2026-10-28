@@ -102,6 +102,7 @@ def test_load_store(outdir: Path, arm64: ArchContext, log):
 
     special_regs = SPECIAL_REGISTERS[arm64.arch] - {"sp"}
 
+    # We treat memory as a single space, not making aliasing analysis
     g = make_graph_from_asm(
         """
 str x0, [sp, #0x40]
@@ -109,13 +110,13 @@ ldp x29, x30, [sp], #0x10
 """,
         arm64,
         outdir,
-        flags=MakerFlags(reg_outputs_black_list=special_regs),
+        flags=MakerFlags(reg_outputs_black_list=special_regs, memory_analysis=False),
     )
 
     load1, load2 = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.LOAD]
     (store,) = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.STORE]
 
-    # So far, we treat memory as a single space, not maxing aliasing analysis at all
+    
     proxy = g.compute_edge_proxy()
     common_preds = set(proxy[load1].get_data_predecessors()).intersection(
         proxy[load2].get_data_predecessors()
@@ -140,6 +141,7 @@ ldr x2, [sp, 0x10]
 """,
         arm64,
         outdir,
+        flags=MakerFlags(memory_analysis=False),
     )
 
     (load_index,) = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.LOAD]

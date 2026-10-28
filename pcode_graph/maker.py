@@ -28,10 +28,10 @@ from loguru import logger
 @dataclass
 class MakerFlags:
     build_cfg: bool = True
-    """Add control flow links in addition to the data flow. Defaults to True."""
+    """Adds control flow links in addition to the data flow. Defaults to True."""
 
     reg_outputs_black_list: set[str] | None = None
-    """Do not consider the given registers as graph outputs to simplify the graphs.
+    """Does not consider the given registers as graph outputs to simplify the graphs.
     Arch-dependent register names.
     If white-list is not None, the value of black-list is ignored.
     If both black-list and white-list are None, the content of SPECIAL_REGISTERS is used
@@ -39,21 +39,21 @@ class MakerFlags:
     """
 
     reg_outputs_white_list: set[str] | None = None
-    """Consider only the given registers as graph outputs to simplify the graphs.
+    """Considers only the given registers as graph outputs to simplify the graphs.
     Arch-dependent register names.
     If white-list is not None, the value of black-list is ignored.
     """
 
     basic_blocks: bool = True
-    """Group operations by basic block in the graph. Make it invariant
+    """Groups operations by basic block in the graph. Make it invariant
     by instruction reordering and to reduce its diameter.
     Requires build_cfg. Defaults to True.
     """
 
-    memory_analysis: bool = False
-    """Resolve stack accesses to link LOADs to the STORE they read, and forward
+    memory_analysis: bool = True
+    """Resolves stack accesses to link LOADs to the STORE they read, and forwards
     stored values to the users of LOADs when possible.
-    Mainly useful for code compiled without optimization. Defaults to False.
+    Mainly useful for code compiled without optimization. Defaults to True.
     """
 
 

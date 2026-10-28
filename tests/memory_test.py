@@ -72,8 +72,16 @@ ret
     assert data_predecessor_names(graph, add) == {"w0", "w1"}
 
 
-def test_disabled_by_default(outdir: Path, x86_64: ArchContext, log):
+def test_enabled_by_default(outdir: Path, x86_64: ArchContext, log):
     graph = make_graph_from_asm(X86_ADD_O0, x86_64, outdir)
+
+    assert len(find_nodes(graph, OpCodes.LOAD)) == 1
+
+
+def test_disabled(outdir: Path, x86_64: ArchContext, log):
+    graph = make_graph_from_asm(
+        X86_ADD_O0, x86_64, outdir, flags=MakerFlags(memory_analysis=False)
+    )
 
     assert len(find_nodes(graph, OpCodes.LOAD)) == 5
 
