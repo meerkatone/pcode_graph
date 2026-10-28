@@ -44,7 +44,7 @@ from pcode_graph.lief_importer import (
     iter_functions,
     get_architecture,
     lookup_chunk,
-    parse_binary,
+    try_parse_binary,
 )
 from pcode_graph.log import setup_logger
 from pcode_graph.translator import Translator
@@ -65,10 +65,10 @@ def main():
             setup_logger()
 
         input_path = Path(args["<input_path>"])
-        assert input_path.exists()
+        assert input_path.exists(), f"{input_path} does not exist"
 
         assert input_path.stat().st_size > 0, "Input file is empty"
-        binary: Binary | None = parse_binary(input_path)
+        binary: Binary | None = try_parse_binary(input_path)
 
         if args["--arch"] != "auto":
             arch: Arch = Arch(args["--arch"])
@@ -192,5 +192,5 @@ def main():
     except Exception as e:
         if args["--debug"]:
             raise
-        print(str(e), file=sys.stderr)
+        print(str(e) or type(e).__name__, file=sys.stderr)
         sys.exit(1)

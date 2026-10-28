@@ -28,12 +28,19 @@ class FunctionOps(ChunkOps):
     function_name: str
 
 
-def parse_binary(binary_path: Path) -> lief.Binary:
+def try_parse_binary(binary_path: Path) -> lief.Binary | None:
+    """Parses the given file, or returns None if LIEF does not recognize its format."""
+
     assert binary_path.is_file(), f"{binary_path} is not a file"
     logger.debug(f"Parse {binary_path}")
-    b = lief.parse(binary_path.as_posix())
-    assert isinstance(b, lief.Binary)
-    return b
+    binary = lief.parse(binary_path.as_posix())
+    return binary if isinstance(binary, lief.Binary) else None
+
+
+def parse_binary(binary_path: Path) -> lief.Binary:
+    binary = try_parse_binary(binary_path)
+    assert binary is not None, f"{binary_path} is not a supported binary"
+    return binary
 
 
 def get_architecture(binary: Path | lief.Binary) -> Arch:
