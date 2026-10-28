@@ -170,6 +170,10 @@ def iter_functions(binary: Path | lief.Binary) -> Iterator[FunctionCode]:
     cache: dict[Any, tuple[bytes, int]] = {}
     sym: lief.ELF.Symbol
 
+    # In relocatable objects, symbol values are offsets in their section, whereas
+    # in executables and shared libraries they are virtual addresses.
+    relocatable = binary.header.file_type == lief.ELF.Header.FILE_TYPE.REL  # type: ignore
+
     for sym in binary.symtab_symbols:  # type: ignore
         if sym.type != lief.ELF.Symbol.TYPE.FUNC or sym.size == 0:
             continue
@@ -182,12 +186,16 @@ def iter_functions(binary: Path | lief.Binary) -> Iterator[FunctionCode]:
             cache[section_id] = (bytes(section.content), section.virtual_address)
 
         section_content, section_address = cache[section_id]
+        offset = sym.value if relocatable else sym.value - section_address
+        if offset < 0 or offset + sym.size > len(section_content):
+            logger.warning(f"Skip function {sym.name}: out of section {section_id}")
+            continue
 
         assert isinstance(sym.name, str)
         yield FunctionCode(
             sym.name,
-            section_address + sym.value,
-            section_content[sym.value : sym.value + sym.size],
+            section_address + offset,
+            section_content[offset : offset + sym.size],
         )
 
 

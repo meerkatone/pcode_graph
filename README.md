@@ -3,6 +3,14 @@
 This library helps to build, display and vectorize the Control-Data Graph (CDG) of a
 chunk of binary code, using Ghidra P-Code representation.
 
+It ams at producing compact graphs, with a diameter as low as possible, but without losing the accurate semantics of the code.
+
+Analyses remain low-level: no assumption is done on the used ABI in order to support exotic code for various task:
+  - semantic-based similarity research
+  - static code deobfuscation
+  - ROP gadget chaining
+
+
 ## Command-line interface
 
 A `cdg` tool is provided to play with binary of assembly files.

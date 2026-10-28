@@ -1,3 +1,7 @@
+# 3.0.1
+
+- Fix bug in lief_exporter.iter_functions for non relocatable files.
+
 # 3.0.0
 
 - Add stack memory analysis to resolve loads whenever it possible, mainly for code compiled with -O0.
