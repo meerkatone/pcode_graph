@@ -1,3 +1,7 @@
+# 3.0.2
+
+- Improve simplifier complexity (for graph with many edges.)
+
 # 3.0.1
 
 - Fix bug in lief_exporter.iter_functions for non relocatable files.

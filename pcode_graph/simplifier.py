@@ -13,6 +13,9 @@ from pathlib import Path
 
 
 class GraphSimplifier:
+    """This simplifier is built to work with flat CFG, Basic Block nodes
+    and Membership edges are not taken into account.
+    """
 
     def __init__(
         self,
@@ -64,27 +67,23 @@ class GraphSimplifier:
             self.graph.nodes[index].kind == NodeKinds.Phi and len(set(data_preds)) == 1
         ), "More than one data predecessor to the node to remove"
 
-        for i, e in enumerate(self.graph.edges):
-            if e is None:
-                continue
-            remove = False
-            if e.source_node == index:
-                if e.kind == EdgeKinds.Data:
-                    self._proxy[e.source_node].out_edge_indexes.remove(i)
-                    e.source_node = data_preds[0]
-                    self._proxy[e.source_node].out_edge_indexes.append(i)
-                else:
-                    remove = True
+        
+        for i in list(proxy.out_edge_indexes):
+            e = self.graph.edges[i]
+            if e.kind == EdgeKinds.Data:
+                self._proxy[e.source_node].out_edge_indexes.remove(i)
+                e.source_node = data_preds[0]
+                self._proxy[e.source_node].out_edge_indexes.append(i)
+            else:
+                self._remove_edge(i)                
 
-            if e.destination_node == index:
-                if e.kind == EdgeKinds.Control:
-                    self._proxy[e.destination_node].in_edge_indexes.remove(i)
-                    e.destination_node = control_succs[0]
-                    self._proxy[e.destination_node].in_edge_indexes.append(i)
-                else:
-                    remove = True
-
-            if remove:
+        for i in list(proxy.in_edge_indexes):
+            e = self.graph.edges[i]            
+            if e.kind == EdgeKinds.Control:
+                self._proxy[e.destination_node].in_edge_indexes.remove(i)
+                e.destination_node = control_succs[0]
+                self._proxy[e.destination_node].in_edge_indexes.append(i)
+            else:
                 self._remove_edge(i)
 
         # Patch the graph
