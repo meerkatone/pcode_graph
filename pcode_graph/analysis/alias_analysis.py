@@ -1,11 +1,13 @@
-"""Summary analysis of stack memory accesses.
+"""Summary analysis of stack and static memory accesses.
 
 LOAD and STORE addresses are resolved relatively to the stack pointer value at the entry
-of the code, so that loads can be linked to the stores they read. This mainly targets
-spilled variables, as found in code compiled without optimization (-O0).
+of the code, or as absolute constants, so that loads can be linked to the stores they read.
+This mainly targets spilled variables, as found in code compiled without optimization (-O0),
+and global variables.
 
 No assumption is made on the use of the stack: calls to unknown code and stores to
-unresolved addresses may write anywhere, so the loads they reach keep the coarse single MEMORY model.
+unresolved addresses may write anywhere, so the loads they reach remain unresolved.
+Stack and absolute addresses are supposed not to alias each other.
 """
 
 from dataclasses import dataclass, field
@@ -13,11 +15,13 @@ import heapq
 
 from pypcode import OpCode, PcodeOp
 
+from pcode_graph.analysis.pass_base import PassBase
 from pcode_graph.arch import Arch
-from pcode_graph.analysis import (
+from pcode_graph.analysis.program import (
     EntryIndex,
+    Memory,
     OpIndex,
-    RichPcodeList,
+    Program,
     UnknownCodeIndex,
     Var,
     VarKinds,
@@ -49,50 +53,57 @@ class StackAddress:
 # Known constant, stack address or unknown value
 AbstractValue = int | StackAddress | None
 
+# Tracked memory byte: (is relative to the stack, offset or absolute address)
+MemoryByte = tuple[bool, int]
+
 
 @dataclass(frozen=True, slots=True)
-class StackAccess:
+class MemoryAccess:
+    in_stack: bool
     offset: int
     size: int
 
     @property
-    def offsets(self) -> range:
-        return range(self.offset, self.offset + self.size)
+    def bytes(self) -> list[MemoryByte]:
+        return [
+            (self.in_stack, offset)
+            for offset in range(self.offset, self.offset + self.size)
+        ]
 
 
 @dataclass(frozen=True, slots=True)
-class StackState:
-    # Definitions of tracked bytes by offset
-    tracked: dict[int, frozenset[OpIndex]]
+class MemoryState:
+    # Definitions of tracked bytes
+    tracked: dict[MemoryByte, frozenset[OpIndex]]
 
     # Definitions of untracked bytes
     default: frozenset[OpIndex]
 
-    def read(self, access: StackAccess) -> frozenset[OpIndex]:
+    def read(self, access: MemoryAccess) -> frozenset[OpIndex]:
         return frozenset().union(
-            *(self.tracked.get(offset, self.default) for offset in access.offsets)
+            *(self.tracked.get(byte, self.default) for byte in access.bytes)
         )
 
-    def write(self, access: StackAccess, index: OpIndex) -> "StackState":
+    def write(self, access: MemoryAccess, index: OpIndex) -> "MemoryState":
         written = frozenset({index})
         tracked = dict(self.tracked)
-        for offset in access.offsets:
-            tracked[offset] = written
-        return StackState(tracked, self.default)
+        for byte in access.bytes:
+            tracked[byte] = written
+        return MemoryState(tracked, self.default)
 
-    def clobber(self) -> "StackState":
+    def clobber(self) -> "MemoryState":
         unknown = {UnknownWriteIndex}
-        return StackState(
-            {offset: defs | unknown for offset, defs in self.tracked.items()},
+        return MemoryState(
+            {byte: defs | unknown for byte, defs in self.tracked.items()},
             self.default | unknown,
         )
 
-    def merge(self, other: "StackState") -> "StackState":
-        return StackState(
+    def merge(self, other: "MemoryState") -> "MemoryState":
+        return MemoryState(
             {
-                offset: self.tracked.get(offset, self.default)
-                | other.tracked.get(offset, other.default)
-                for offset in self.tracked.keys() | other.tracked.keys()
+                byte: self.tracked.get(byte, self.default)
+                | other.tracked.get(byte, other.default)
+                for byte in self.tracked.keys() | other.tracked.keys()
             },
             self.default | other.default,
         )
@@ -102,34 +113,23 @@ ADDRESS_OPCODES = {OpCode.COPY, OpCode.INT_ADD, OpCode.INT_SUB, OpCode.INT_OR}
 CALL_OPCODES = {OpCode.CALL, OpCode.CALLIND, OpCode.CALLOTHER}
 
 
-@dataclass
-class StackMemory:
-    """Results of the stack memory analysis."""
+class MemoryAnalyzer(PassBase):
 
-    # Maps a stack-reading LOAD to possible STORE definitions
-    load_defs: dict[OpIndex, set[OpIndex]] = field(default_factory=dict)
+    def __init__(self, program: Program) -> None:
+        super().__init__(program)
 
-    # Maps a load to defining stores if reading exactly the values written by them
-    forwarded_loads: dict[OpIndex, list[OpIndex]] = field(default_factory=dict)
-
-
-def analyze_stack_memory(program: RichPcodeList) -> StackMemory:
-    return StackMemoryAnalyzer(program)()
-
-
-class StackMemoryAnalyzer:
-
-    def __init__(self, program: RichPcodeList) -> None:
-        self.program = program
         self.stack_pointer = STACK_POINTERS.get(program.arch)
-        self.result = StackMemory()
         self._output_values: dict[OpIndex, AbstractValue] = {}
-        self._loads: dict[OpIndex, StackAccess] = {}
-        self._stores: dict[OpIndex, StackAccess | None] = {}
+        self._loads: dict[OpIndex, MemoryAccess] = {}
+        self._stores: dict[OpIndex, MemoryAccess | None] = {}
 
-    def __call__(self) -> StackMemory:
+    @property
+    def result(self) -> Memory:
+        return self.program.memory
+
+    def __call__(self):
         if self.stack_pointer is None or not self.program.basic_blocks:
-            return self.result
+            return
 
         for index, op in enumerate(self.program.operations):
             if not self.program.reachable(index):
@@ -145,7 +145,7 @@ class StackMemoryAnalyzer:
                 self._stores[index] = self._compute_access(index, op.inputs[2].size)
 
         self._collect_load_defs(self._compute_reads())
-        return self.result
+        
 
     def value_of(self, index: OpIndex, var: Var) -> AbstractValue:
         """Evaluates the given variable when read by the given operation."""
@@ -202,14 +202,17 @@ class StackMemoryAnalyzer:
                 return value
         return None
 
-    def _compute_access(self, index: OpIndex, size: int) -> StackAccess | None:
+    def _compute_access(self, index: OpIndex, size: int) -> MemoryAccess | None:
         address = self.value_of(index, wrap(self.program.operations[index].inputs[1]))
-        if isinstance(address, StackAddress):
-            return StackAccess(address.offset, size)
+        match address:
+            case StackAddress(offset):
+                return MemoryAccess(True, offset, size)
+            case int(absolute):
+                return MemoryAccess(False, absolute, size)
         return None
 
-    def _apply(self, index: OpIndex, state: StackState) -> StackState:
-        """Returns the stack state after the given operation."""
+    def _apply(self, index: OpIndex, state: MemoryState) -> MemoryState:
+        """Returns the memory state after the given operation."""
 
         op = self.program.operations[index]
         if op.opcode == OpCode.STORE:
@@ -225,8 +228,8 @@ class StackMemoryAnalyzer:
         """Computes the definitions of the bytes read by each resolved load."""
 
         blocks = self.program.basic_blocks
-        block_inputs: list[StackState | None] = [None] * len(blocks)
-        block_inputs[0] = StackState({}, frozenset({EntryIndex}))
+        block_inputs: list[MemoryState | None] = [None] * len(blocks)
+        block_inputs[0] = MemoryState({}, frozenset({EntryIndex}))
         reads: dict[OpIndex, frozenset[OpIndex]] = {}
         pending = [0]
         queued = {0}

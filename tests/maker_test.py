@@ -79,7 +79,7 @@ ret
         flags=MakerFlags(reg_outputs_black_list=special_regs),
     )
 
-    check_inputs(g, "#0x8", "RSP", "MEMORY")
+    check_inputs(g, "#0x8", "RSP")
     check_outputs(g, "RSP")
 
 
@@ -93,16 +93,20 @@ str x0, [x8]
         outdir,
     )
 
-    check_inputs(g, "MEMORY", "x9", "x8")
-    check_outputs(g, "x0", "MEMORY")
+    check_inputs(g, "x9", "x8")
+    check_outputs(g, "x0")
     check_ops(g, "LOAD", "STORE")
+
+    # Memory is implicit in LOAD and STORE
+    (store,) = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.STORE]
+    assert not list(g.compute_edge_proxy()[store].get_data_successors())
 
 
 def test_load_store(outdir: Path, arm64: ArchContext, log):
 
     special_regs = SPECIAL_REGISTERS[arm64.arch] - {"sp"}
 
-    # We treat memory as a single space, not making aliasing analysis
+    # Without aliasing analysis, loads are not linked to stores
     g = make_graph_from_asm(
         """
 str x0, [sp, #0x40]
@@ -110,46 +114,36 @@ ldp x29, x30, [sp], #0x10
 """,
         arm64,
         outdir,
-        flags=MakerFlags(reg_outputs_black_list=special_regs, memory_analysis=False),
+        flags=MakerFlags(reg_outputs_black_list=special_regs),
     )
 
     load1, load2 = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.LOAD]
     (store,) = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.STORE]
 
-    
     proxy = g.compute_edge_proxy()
-    common_preds = set(proxy[load1].get_data_predecessors()).intersection(
-        proxy[load2].get_data_predecessors()
+    for load in load1, load2:
+        assert len(list(proxy[load].get_data_predecessors())) == 1
+    assert not list(proxy[store].get_data_successors())
+    assert not any(node.kind == NodeKinds.Phi for node in g.nodes)
+    check_outputs(g, "x29", "x30", "sp")
+    check_inputs(g, "x0", "sp", "#0x40", "#0x10", "#0x8")
+
+
+
+def test_many_stores(outdir: Path, arm64: ArchContext, log):
+    # Each load used to depend on every previous store
+    count = 200
+    asm = "".join(
+        f"str x0, [x1, #{8 * i}]\nldr x2, [x3]\nadd x4, x4, x2\n" for i in range(count)
     )
-    (phi_index,) = tuple(common_preds)
-    assert g.nodes[phi_index].kind == NodeKinds.Phi
-    assert {str(g.nodes[p]) for p in proxy[phi_index].get_data_predecessors()} == {
-        "MEMORY",
-        "STORE",
-    }
-    check_outputs(g, "x29", "x30", "MEMORY", "sp")
-    check_inputs(g, "x0", "MEMORY", "sp", "#0x40", "#0x10", "#0x8")
+    g = make_graph_from_asm(asm, arm64, outdir, flags=MakerFlags(basic_blocks=False))
 
-
-def test_consecutive_stores(outdir: Path, arm64: ArchContext, log):
-
-    g = make_graph_from_asm(
-        """
-str x0, [sp, 0x10]
-str x1, [sp, 0x20]
-ldr x2, [sp, 0x10]
-""",
-        arm64,
-        outdir,
-        flags=MakerFlags(memory_analysis=False),
-    )
-
-    (load_index,) = [n for n, node in enumerate(g.nodes) if node.opcode == OpCodes.LOAD]
+    # Linear, instead of quadratic
+    assert len(g.edges) < 20 * count
     proxy = g.compute_edge_proxy()
-    phi_index, add_index = list(proxy[load_index].get_data_predecessors())
-    assert g.nodes[phi_index].kind == NodeKinds.Phi
-    assert g.nodes[add_index].opcode == OpCodes.INT_ADD
-    assert len(list(proxy[phi_index].get_data_predecessors())) == 3
+    for index, node in enumerate(g.nodes):
+        if node.opcode == OpCodes.LOAD:
+            assert len(list(proxy[index].get_data_predecessors())) == 1
 
 
 def test_call_ind_arm(outdir: Path, arm64: ArchContext, log):
@@ -281,7 +275,7 @@ mov rax, [rdi+38h]
         outdir,
     )
 
-    check_inputs(g, "RDI", "#0x38", "MEMORY")
+    check_inputs(g, "RDI", "#0x38")
     check_outputs(g, "RAX")
     check_ops(g, "INT_ADD", "LOAD")
 
@@ -542,7 +536,8 @@ call 0x546fb
     g1 = make_graph_from_asm(asm, x86_64, outdir / "simple")
 
     check_inputs(g1, "RSP", "#0x8", "#0x5")  # 0x5 is return address
-    check_outputs(g1, "MEMORY")
+    check_outputs(g1)
+    check_ops(g1, "INT_SUB", "STORE", "CALL")
 
     ignored_regs = SPECIAL_REGISTERS[x86_64.arch] - {"RSP"}
 
@@ -553,7 +548,7 @@ call 0x546fb
         flags=MakerFlags(reg_outputs_black_list=ignored_regs),
     )
     check_inputs(g2, "RSP", "#0x8", "#0x5")  # 0x5 is return address
-    check_outputs(g2, "RSP", "MEMORY")
+    check_outputs(g2, "RSP")
 
 
 def test_call_in_loop(outdir: Path, x86_64: ArchContext, log):

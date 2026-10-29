@@ -52,19 +52,12 @@ class BasicBlockGrouper:
             list
         )
         self.control_predecessor_counts: Counter[NodeIndex] = Counter()
-        self.memory_readers: set[NodeIndex] = set()
-        self.memory_writers: set[NodeIndex] = set()
 
         # Single pass over edges instead of per-node proxies
         for edge in graph.edges:
             if edge.kind == EdgeKinds.Control:
                 self.control_successors[edge.source_node].append(edge.destination_node)
                 self.control_predecessor_counts[edge.destination_node] += 1
-            elif edge.kind == EdgeKinds.Data:
-                if graph.nodes[edge.source_node].kind == NodeKinds.ReadMemory:
-                    self.memory_readers.add(edge.destination_node)
-                if graph.nodes[edge.destination_node].kind == NodeKinds.WrittenMemory:
-                    self.memory_writers.add(edge.source_node)
 
         self.operations = [
             index
@@ -95,13 +88,9 @@ class BasicBlockGrouper:
 
     def side_effect(self, index: NodeIndex) -> SideEffect:
         opcode = self.graph.nodes[index].opcode
-        if (
-            opcode in CALL_OPCODES
-            or opcode == OpCodes.STORE
-            or index in self.memory_writers
-        ):
+        if opcode in CALL_OPCODES or opcode == OpCodes.STORE:
             return SideEffect.BARRIER
-        if opcode == OpCodes.LOAD or index in self.memory_readers:
+        if opcode == OpCodes.LOAD:
             return SideEffect.READ
         return SideEffect.NONE
 

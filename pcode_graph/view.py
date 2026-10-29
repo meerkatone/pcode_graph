@@ -24,9 +24,9 @@ def draw_graph(
         style: dict
 
         match node.kind:
-            case NodeKinds.InputRegister | NodeKinds.ReadMemory:
+            case NodeKinds.InputRegister:
                 style = dict(color="#c0c0ff")  # Light Blue
-            case NodeKinds.OutputRegister | NodeKinds.WrittenMemory:
+            case NodeKinds.OutputRegister:
                 style = dict(color="#7070da")  # Blue
             case NodeKinds.Constant:
                 style = dict(color="#ff8080")  # Red

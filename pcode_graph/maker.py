@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
-from pcode_graph.analysis import (
+from pcode_graph.analysis.passes import run_analyses
+from pcode_graph.analysis.program import (
     EntryIndex,
     OpIndex,
-    RichPcodeList,
-    MEMORY,
+    Program,
     UnknownCodeIndex,
     ExitIndex,
     Var,
@@ -15,7 +15,6 @@ from pcode_graph.asm import Assembler
 from pcode_graph.basic_blocks import make_basic_blocks
 from pcode_graph.checker import check_graph
 from pcode_graph.graph import CDG, Edge, EdgeKinds, NodeIndex, NodeKinds, Node
-from pcode_graph.memory import StackMemory, analyze_stack_memory
 from pcode_graph.pcode import from_native_opcode
 from pcode_graph.registers import SPECIAL_REGISTERS
 from pcode_graph.simplifier import GraphSimplifier
@@ -50,14 +49,8 @@ class MakerFlags:
     Requires build_cfg. Defaults to True.
     """
 
-    memory_analysis: bool = True
-    """Resolves stack accesses to link LOADs to the STORE they read, and forwards
-    stored values to the users of LOADs when possible.
-    Mainly useful for code compiled without optimization. Defaults to True.
-    """
 
-
-def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
+def make_graph(prg: Program, flags: MakerFlags | None = None) -> CDG:
     """Makes a graph from a list of P-Code operations.
 
     Args:
@@ -74,8 +67,6 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     black_list, white_list = flags.reg_outputs_black_list, flags.reg_outputs_white_list
     if black_list is None and white_list is None:
         black_list = SPECIAL_REGISTERS[prg.arch]
-
-    memory = analyze_stack_memory(prg) if flags.memory_analysis else StackMemory()
 
     # Already created input nodes, by related input variable
     input_node_indexes: dict[Var, NodeIndex] = {}
@@ -159,10 +150,6 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
                         register_id=var.value,
                         register_name=var.pretty_name,
                     )
-                case VarKinds.Ram:
-                    node = Node(NodeKinds.ReadMemory, var.size)
-                case VarKinds.IndirectAccess:
-                    node = Node(NodeKinds.ReadMemory, var.size)
                 case _:
                     raise ValueError(f"Unexpected kind for input {var.kind}")
             node_index = len(nodes)
@@ -180,25 +167,31 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
     ):
         edges.append(Edge(from_node, to_node, EdgeKinds.Data, operand_number))
 
-    def get_pred_nodes(var: Var, def_op_indexes: set[OpIndex]) -> list[NodeIndex]:
-        """Returns the nodes defining the given variable,
+    def get_stored_values(store_indexes: list[OpIndex]) -> list[tuple[Var, set[OpIndex]]]:
+        """Returns the values written by the given stores, with their definitions."""
+
+        stored_values = []
+        for store_index in store_indexes:
+            value = wrap(prg.operations[store_index].inputs[2])
+            stored_values.append((value, prg.get_defs(store_index, value) or {EntryIndex}))
+        return stored_values
+
+    def get_pred_nodes(sources: list[tuple[Var, set[OpIndex]]]) -> list[NodeIndex]:
+        """Returns the nodes defining the given variables,
         replacing forwarded loads by the definitions of the stored values."""
 
         pred_node_indexes: list[NodeIndex] = []
         seen_loads: set[OpIndex] = set()
-        pending = [(var, def_op_indexes)]
+        pending = list(reversed(sources))
         while pending:
             var, def_op_indexes = pending.pop()
             # Sort defs to remain determinist
             for def_op_index in sorted(def_op_indexes):
-                store_indexes = memory.forwarded_loads.get(def_op_index)
+                store_indexes = prg.memory.forwarded_loads.get(def_op_index)
                 if store_indexes is not None:
                     if def_op_index not in seen_loads:
                         seen_loads.add(def_op_index)
-                        for store_index in store_indexes:
-                            value = wrap(prg.operations[store_index].inputs[2])
-                            value_defs = prg.get_defs(store_index, value)
-                            pending.append((value, value_defs or {EntryIndex}))
+                        pending.extend(get_stored_values(store_indexes))
                     continue
                 if def_op_index == EntryIndex:
                     # Input variable
@@ -210,14 +203,13 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
         return pred_node_indexes
 
     def link_defs(
-        var: Var,
-        def_op_indexes: set[OpIndex],
+        sources: list[tuple[Var, set[OpIndex]]],
         user_node_index: NodeIndex,
         operand_number: int | None,
     ):
 
         # Collect data preds to see if we need a phi node
-        pred_node_indexes = get_pred_nodes(var, def_op_indexes)
+        pred_node_indexes = get_pred_nodes(sources)
 
         if len(pred_node_indexes) == 1:
             # Simple def, direct link
@@ -229,7 +221,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
             key = tuple(pred_node_indexes)
             phi_node_index = phi_node_indexes.get(key)
             if phi_node_index is None:
-                phi_node = Node(NodeKinds.Phi, var.size)
+                phi_node = Node(NodeKinds.Phi, max(var.size for var, _ in sources))
                 phi_node_index = len(nodes)
                 nodes.append(phi_node)
                 phi_node_indexes[key] = phi_node_index
@@ -239,7 +231,7 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
 
     # Build the data flow
 
-    # Start from writes to outputs registers and memory
+    # Start from writes to outputs registers
     for var, def_op_indexes in prg.get_exit_defs().items():
         assert def_op_indexes
         match var.kind:
@@ -266,39 +258,37 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
                     register_name=var.pretty_name,
                 )
 
-            case VarKinds.IndirectAccess | VarKinds.Ram:
-                output_node = Node(NodeKinds.WrittenMemory, var.size)
-
             case VarKinds.Unique:
                 # Ignore writes to temporaries
                 continue
 
-            case VarKinds.Constant:
+            case VarKinds.Constant | VarKinds.Ram:
                 raise ValueError(f"Unexpected output kind {var.kind}")
 
         output_node_index = len(nodes)
         nodes.append(output_node)
         # logger.debug(f"Start from output {output_node_index} {output_node}")
-        link_defs(var, def_op_indexes, output_node_index, None)
+        link_defs([(var, def_op_indexes)], output_node_index, None)
 
-    if flags.build_cfg:
+    for op_index, op in enumerate(prg.operations):
+        if not prg.reachable(op_index):
+            continue
+        # Memory writes are side effects without data successor
+        if op.opcode == OpCode.STORE:
+            get_or_create_operation(op_index)
         # Also add conditional branching or branching to unknown address
-        for op_index, op in enumerate(prg.operations):
-            if not prg.reachable(op_index):
-                continue
-            if op.opcode == OpCode.CBRANCH or (
-                UnknownCodeIndex in prg.succ_ops(op_index) and op.opcode != OpCode.IMARK
-            ):
-                get_or_create_operation(op_index)
+        elif flags.build_cfg and (
+            op.opcode == OpCode.CBRANCH
+            or (UnknownCodeIndex in prg.succ_ops(op_index) and op.opcode != OpCode.IMARK)
+        ):
+            get_or_create_operation(op_index)
 
     # Follow predecessors recursively until the whole dataflow graph is built
     while newly_taken_ops:
         op_index, node_index = newly_taken_ops.pop()
 
+        number = -1
         for number, (var, defs) in enumerate(prg.iter_input_defs(op_index)):
-
-            if var == MEMORY and op_index in memory.load_defs:
-                defs = memory.load_defs[op_index]
 
             if not defs:
                 # No definition means this is a constant
@@ -306,7 +296,12 @@ def make_graph(prg: RichPcodeList, flags: MakerFlags | None = None) -> CDG:
                 add_data_edge(pred_node_index, node_index, number)
                 continue
 
-            link_defs(var, defs, node_index, number)
+            link_defs([(var, defs)], node_index, number)
+
+        # Memory is implicit, but a resolved load depends on the values it may read
+        store_indexes = sorted(prg.memory.load_defs.get(op_index, set()) - {EntryIndex})
+        if store_indexes:
+            link_defs(get_stored_values(store_indexes), node_index, number + 1)
 
     if flags.build_cfg:
         # Build the control flow graph, jumping over nodes which
@@ -408,7 +403,8 @@ def make_graph_from_binary(
     """
 
     operations = translator.translate(code, base_address)
-    prg = RichPcodeList(translator.arch, operations=operations)
+    prg = Program(arch=translator.arch, operations=operations)
+    run_analyses(prg)
     return make_graph(prg, flags)
 
 

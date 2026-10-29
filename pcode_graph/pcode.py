@@ -1,7 +1,7 @@
 from enum import Enum, auto
 import pypcode
-from pcode_graph.arch import Arch
 from pcode_graph.bit_utils import unsigned_to_signed
+
 
 
 # Replacement for native pypcode opcode (to ease pickling and dumping)
@@ -145,7 +145,7 @@ NUM_OPERANDS: dict[OpCodes, int] = {
     OpCodes.INT_SUB: 2,
     OpCodes.INT_XOR: 2,
     OpCodes.INT_ZEXT: 1,
-    OpCodes.LOAD: 2,  # Memory node added
+    OpCodes.LOAD: -1,  # Address, then values of the stores it reads if resolved
     OpCodes.LZCOUNT: 1,
     OpCodes.PIECE: 2,
     OpCodes.POPCOUNT: 1,

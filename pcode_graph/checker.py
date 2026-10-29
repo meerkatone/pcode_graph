@@ -65,6 +65,16 @@ def check_graph(graph: CDG):
                 node.opcode is not None
                 and NUM_OPERANDS[node.opcode] in {-1, len(data_preds)}
             )
+            # TODO: move this in check dataflow below
+            match node.opcode:
+                case OpCodes.LOAD:
+                    check(len(data_preds) in {1, 2})
+                case OpCodes.STORE:
+                    # Accessed memory is implicit
+                    check(
+                        not list(proxy.get_data_successors()),
+                        f"Node {index} {node} with data successors",
+                    )
 
             data_numbers: list[int] = []
             control_numbers: list[int] = []
@@ -106,8 +116,6 @@ def check_graph(graph: CDG):
                             NodeKinds.OutputRegister,
                             NodeKinds.Phi,
                             NodeKinds.Constant,
-                            NodeKinds.ReadMemory,
-                            NodeKinds.WrittenMemory,
                         },
                         f"Node {index} {node} without successor",
                     )
@@ -148,7 +156,6 @@ def check_graph(graph: CDG):
                         NodeKinds.InputRegister,
                         NodeKinds.OutputRegister,
                         NodeKinds.Constant,
-                        NodeKinds.ReadMemory,
                         NodeKinds.External,
                         NodeKinds.End,
                         NodeKinds.Operation,  # For example the CALL operation
@@ -163,16 +170,11 @@ def check_graph(graph: CDG):
                         NodeKinds.Operation,
                         NodeKinds.Phi,
                         NodeKinds.OutputRegister,
-                        NodeKinds.WrittenMemory,
                     },
                     f"Node {index} {node} with {len(data_preds)} data predecessors",
                 )
             case _:
-                if node.kind not in {
-                    NodeKinds.Phi,
-                    NodeKinds.OutputRegister,
-                    NodeKinds.WrittenMemory,
-                }:
+                if node.kind not in {NodeKinds.Phi, NodeKinds.OutputRegister}:
                     check(
                         (
                             node.kind == NodeKinds.Operation

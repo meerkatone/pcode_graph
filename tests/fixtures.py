@@ -90,7 +90,7 @@ def check_inputs(g: CDG, *expected_names: str):
     names = []
     for n in g.nodes:
         match n.kind:
-            case NodeKinds.ReadMemory | NodeKinds.InputRegister | NodeKinds.Constant:
+            case NodeKinds.InputRegister | NodeKinds.Constant:
                 names.append(str(n))
     assert set(names) == set(expected_names)
 
@@ -99,7 +99,7 @@ def check_outputs(g: CDG, *expected_names: str):
     names = []
     for n in g.nodes:
         match n.kind:
-            case NodeKinds.WrittenMemory | NodeKinds.OutputRegister:
+            case NodeKinds.OutputRegister:
                 names.append(str(n))
     assert set(names) == set(expected_names)
 

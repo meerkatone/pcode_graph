@@ -20,14 +20,11 @@ class NodeKinds(Enum):
     Operation = 3
     Phi = 4
 
-    ReadMemory = 5
-    WrittenMemory = 6
+    Begin = 5
+    External = 6
+    End = 7
 
-    Begin = 7
-    External = 8
-    End = 9
-
-    BasicBlock = 10
+    BasicBlock = 8
 
 
 class EdgeKinds(Enum):
@@ -87,8 +84,6 @@ class Node:
 
     def __str__(self):
         match self.kind:
-            case NodeKinds.ReadMemory | NodeKinds.WrittenMemory:
-                return "MEMORY"
             case NodeKinds.InputRegister | NodeKinds.OutputRegister:
                 return self.register_name
             case NodeKinds.Constant:

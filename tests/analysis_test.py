@@ -1,11 +1,10 @@
 from pathlib import Path
 
 from pypcode import OpCode
-from pcode_graph.analysis import (
-    MEMORY,
+from pcode_graph.analysis.program import (
     EntryIndex,
     ExitIndex,
-    RichPcodeList,
+    Program,
     UnknownCodeIndex,
     VarKinds,
     wrap,
@@ -14,7 +13,7 @@ from tests.helpers import make_program_from_asm
 from .fixtures import outdir, arm64, ArchContext, log, x86_64, mips_64
 
 
-def dump_exit_defs(prg: RichPcodeList):
+def dump_exit_defs(prg: Program):
     return {str(v): s for v, s in prg.get_exit_defs().items()}
 
 
@@ -177,10 +176,9 @@ str x0, [x8]
         (5, "STORE"),
     ]
 
-    load_inputs = {str(var): defs for var, defs in prg.iter_input_defs(2)}
-
-    assert load_inputs["MEMORY"] == {EntryIndex}
-    assert prg.get_exit_defs()[MEMORY] == {5}
+    # Memory is implicit: only the address is a LOAD input, a STORE is no definition
+    assert len(list(prg.iter_input_defs(2))) == 1
+    assert set(dump_exit_defs(prg)) == {"x0"}
 
 
 def test_store_load(outdir: Path, arm64: ArchContext, log):
@@ -203,8 +201,11 @@ ldr x2, [sp, #0x10]
         (5, "INT_ADD"),
         (6, "LOAD"),
     ]
-    assert prg.reaching_defs[6][MEMORY] == {EntryIndex, 3}
-    assert prg.get_exit_defs()[MEMORY] == {3}
+    assert all(
+        var.kind in {VarKinds.Register, VarKinds.Unique}
+        for var in prg.reaching_defs[6]
+    )
+    assert 3 not in set().union(*prg.get_exit_defs().values())
 
 
 def test_load_store2(outdir: Path, arm64: ArchContext, log):
@@ -234,7 +235,7 @@ ldr x2, [x2]
         (10, "COPY"),
         (11, "LOAD"),
     ]
-    assert prg.reaching_defs[11][MEMORY] == {EntryIndex, 5, 8}
+    assert len(list(prg.iter_input_defs(11))) == 1
 
 
 def test_add_rsp_ret(outdir: Path, x86_64: ArchContext):
@@ -359,10 +360,24 @@ def test_pc_relative_accesses(outdir, x86_64, log):
         base_address=0x1379,
     )
 
-    assert prg.operations[5].inputs[0].space.name == "ram"
-    assert prg.operations[25].output is not None
-    assert prg.operations[25].output.space.name == "ram"
-    assert prg.operations[5].inputs[0].offset == prg.operations[25].output.offset
+    # Direct accesses to ram are rewritten as LOAD and STORE at a constant address
+    (load,) = [
+        op
+        for op in prg.operations
+        if op.opcode == OpCode.LOAD and op.inputs[1].space.name == "const"
+    ]
+    (store,) = [
+        op
+        for op in prg.operations
+        if op.opcode == OpCode.STORE and op.inputs[1].space.name == "const"
+    ]
+    assert load.inputs[1].offset == store.inputs[1].offset == 0x605C
+    assert all(
+        var.kind != VarKinds.Ram
+        for index in range(len(prg.operations))
+        for var in prg.iter_inputs(index)
+    )
+    assert all(var.kind != VarKinds.Ram for var in prg.get_exit_defs())
 
 
 def test_mul_in_loop(outdir, arm64, log):

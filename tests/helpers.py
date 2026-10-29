@@ -1,5 +1,6 @@
 from pathlib import Path
-from pcode_graph.analysis import RichPcodeList
+from pcode_graph.analysis.passes import run_analyses
+from pcode_graph.analysis.program import Program
 from pcode_graph.graph import CDG
 from pcode_graph.pcode import dump_operation
 from pcode_graph.view import draw_graph
@@ -23,7 +24,7 @@ def load_pcode_ops_from_binary(
     arch: ArchContext,
     outdir: Path | None,
     base_address: int,
-) -> RichPcodeList:
+) -> Program:
     operations = arch.translator.translate(code, base_address)
     if outdir is not None:
         outdir.mkdir(parents=True, exist_ok=True)
@@ -31,12 +32,13 @@ def load_pcode_ops_from_binary(
             for o in operations:
                 f.write(f"{dump_operation(o)}\n")
 
-    rpl = RichPcodeList(arch.arch, operations)
+    prg = Program(arch=arch.arch, operations=operations)
+    run_analyses(prg)
     if outdir is not None:
         with open(outdir / "analysis.md", "w") as f:
-            f.write(rpl.dump())
+            f.write(prg.dump())
 
-    return rpl
+    return prg
 
 
 def make_program_from_asm(
@@ -44,7 +46,7 @@ def make_program_from_asm(
     arch: ArchContext,
     outdir: Path | None = None,
     base_address: int = 0,
-) -> RichPcodeList:
+) -> Program:
 
     return load_pcode_ops_from_binary(
         assemble(asm, arch, outdir, base_address),

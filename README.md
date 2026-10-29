@@ -123,9 +123,7 @@ graph = make_graph_from_asm(assembler, translator, asm)
 
 ### Pointer alias analysis
 
-Addresses are resolved relatively to the stack pointer at entry, to link each stack LOAD to the STOREs it actually reads. This mainly helps with code compiled without optimization, where variables are spilled.
-
-A part from this, no advanced alias analysis is performed and no assumption is made about the used ABI.
+Addresses are resolved relatively to the stack pointer at entry, or as absolute constants, to link each LOAD to the values written by the STOREs. Stack and absolute addresses are supposed not to alias each other. Apart from this, no advanced alias analysis is performed and no assumption is made about the used ABI: calls to unknown code and stores to unresolved addresses may write anywhere.
 
 ### View the graph
 

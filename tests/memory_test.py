@@ -5,13 +5,11 @@ import pytest
 
 from pcode_graph.graph import CDG, NodeIndex, NodeKinds
 from pcode_graph.maker import MakerFlags
-from pcode_graph.analysis import wrap
-from pcode_graph.memory import STACK_POINTERS, analyze_stack_memory
+from pcode_graph.analysis.program import wrap
+from pcode_graph.analysis.alias_analysis import STACK_POINTERS
 from pcode_graph.pcode import OpCodes
 from .helpers import make_graph_from_asm, make_program_from_asm
 from .fixtures import *
-
-MEMORY_FLAGS = MakerFlags(memory_analysis=True)
 
 X86_ADD_O0 = """
 push rbp
@@ -37,12 +35,12 @@ def data_predecessor_names(graph: CDG, index: NodeIndex) -> set[str]:
 
 
 def test_spilled_arguments_x86(outdir: Path, x86_64: ArchContext, log):
-    graph = make_graph_from_asm(X86_ADD_O0, x86_64, outdir, flags=MEMORY_FLAGS)
+    graph = make_graph_from_asm(X86_ADD_O0, x86_64, outdir)
 
     # Only the return address is still loaded
     (load,) = find_nodes(graph, OpCodes.LOAD)
-    assert data_predecessor_names(graph, load) == {"MEMORY", "INT_ADD"}
-    check_outputs(graph, "RAX", "RBP", "MEMORY")
+    assert data_predecessor_names(graph, load) == {"INT_ADD"}
+    check_outputs(graph, "RAX", "RBP")
 
     (output_rax,) = [i for i, n in enumerate(graph.nodes) if str(n) == "RAX"]
     (add,) = graph.compute_edge_proxy()[output_rax].get_data_predecessors()
@@ -62,8 +60,7 @@ add sp, sp, #0x10
 ret
 """,
         arm64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
     assert not find_nodes(graph, OpCodes.LOAD)
@@ -76,14 +73,6 @@ def test_enabled_by_default(outdir: Path, x86_64: ArchContext, log):
     graph = make_graph_from_asm(X86_ADD_O0, x86_64, outdir)
 
     assert len(find_nodes(graph, OpCodes.LOAD)) == 1
-
-
-def test_disabled(outdir: Path, x86_64: ArchContext, log):
-    graph = make_graph_from_asm(
-        X86_ADD_O0, x86_64, outdir, flags=MakerFlags(memory_analysis=False)
-    )
-
-    assert len(find_nodes(graph, OpCodes.LOAD)) == 5
 
 
 def test_loop_counter(outdir: Path, x86_64: ArchContext, log):
@@ -106,8 +95,7 @@ pop rbp
 ret
 """,
         x86_64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
     assert len(find_nodes(graph, OpCodes.LOAD)) == 1
@@ -129,13 +117,31 @@ str x0, [sp, #-0x10]
 ldr w1, [sp, #-0xc]
 """,
         arm64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
-    # Not forwarded, but directly linked to the store instead of a phi with MEMORY
+    # Not forwarded, but linked to the stored value
     (load,) = find_nodes(graph, OpCodes.LOAD)
-    assert data_predecessor_names(graph, load) == {"STORE", "INT_ADD"}
+    assert data_predecessor_names(graph, load) == {"x0", "INT_ADD"}
+    (store,) = find_nodes(graph, OpCodes.STORE)
+    assert not list(graph.compute_edge_proxy()[store].get_data_successors())
+
+
+def test_load_in_loop(outdir: Path, arm64: ArchContext, log):
+    graph = make_graph_from_asm(
+        """
+loop:
+ldr w1, [sp, #-0xc]
+str x0, [sp, #-0x10]
+cbnz x2, loop
+""",
+        arm64,
+        outdir,        
+    )
+
+    # Initial memory is implicit, the load still depends on the stored value
+    (load,) = find_nodes(graph, OpCodes.LOAD)
+    assert data_predecessor_names(graph, load) == {"x0", "INT_ADD"}
 
 
 def test_no_alias(outdir: Path, arm64: ArchContext, log):
@@ -145,12 +151,11 @@ str x0, [sp, #0x40]
 ldp x29, x30, [sp], #0x10
 """,
         arm64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
     for load in find_nodes(graph, OpCodes.LOAD):
-        assert data_predecessor_names(graph, load) & {"MEMORY", "STORE"} == {"MEMORY"}
+        assert len(list(graph.compute_edge_proxy()[load].get_data_predecessors())) == 1
 
 
 def test_unresolved_store_may_alias(outdir: Path, x86_64: ArchContext, log):
@@ -163,8 +168,7 @@ mov rbx, qword ptr [rsp-8]
 ret
 """,
         x86_64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
     rbx_load = [
@@ -181,31 +185,25 @@ ret
 def test_store_below_stack_pointer_is_kept(outdir: Path, x86_64: ArchContext, log):
     # The next gadget of a chain may read it
     graph = make_graph_from_asm(
-        "mov qword ptr [rsp-0x10], rax; ret", x86_64, outdir, flags=MEMORY_FLAGS
+        "mov qword ptr [rsp-0x10], rax; ret", x86_64, outdir,
     )
 
     assert len(find_nodes(graph, OpCodes.STORE)) == 1
-    check_outputs(graph, "MEMORY")
+    check_outputs(graph)
 
 
-def test_unresolved_load_keeps_all_stores(outdir: Path, arm64: ArchContext, log):
+def test_unresolved_load(outdir: Path, arm64: ArchContext, log):
     graph = make_graph_from_asm(
         """
 str x0, [sp, #-0x10]
 ldr x1, [x2]
 """,
         arm64,
-        outdir,
-        flags=MEMORY_FLAGS,
+        outdir,        
     )
 
     (load,) = find_nodes(graph, OpCodes.LOAD)
-    (phi,) = [
-        pred
-        for pred in graph.compute_edge_proxy()[load].get_data_predecessors()
-        if graph.nodes[pred].kind == NodeKinds.Phi
-    ]
-    assert data_predecessor_names(graph, phi) == {"MEMORY", "STORE"}
+    assert data_predecessor_names(graph, load) == {"x2"}
 
 
 def test_call_clobbers_stack(outdir: Path, x86_64: ArchContext, log):
@@ -219,7 +217,7 @@ mov rbx, qword ptr [rsp-0x10]
         x86_64,
         outdir,
     )
-    memory = analyze_stack_memory(program)
+    memory = program.memory
 
     # Only the load before the call is resolved
     (call,) = [i for i, op in enumerate(program.operations) if op.opcode.name == "CALL"]
@@ -231,7 +229,7 @@ mov rbx, qword ptr [rsp-0x10]
 def test_internal_call_does_not_clobber(outdir: Path, x86_64: ArchContext, log):
     # Call used as push + jump, as in obfuscated code
     graph = make_graph_from_asm(
-        "call target; nop; target: pop rax; ret", x86_64, outdir, flags=MEMORY_FLAGS
+        "call target; nop; target: pop rax; ret", x86_64, outdir,
     )
 
     # Only the return address of ret is still loaded
@@ -253,7 +251,7 @@ mov rbx, qword ptr [rsp-8]
         x86_64,
         outdir,
     )
-    memory = analyze_stack_memory(program)
+    
 
     stores = [
         index
@@ -283,3 +281,37 @@ def test_stack_pointers_match_pypcode(
     stack_pointer = STACK_POINTERS[arch.arch]
     registers = arch.translator.context.registers
     assert wrap(registers[stack_pointer.pretty_name]) == stack_pointer
+
+
+def test_global_variable(outdir: Path, x86_64: ArchContext, log):
+    graph = make_graph_from_asm(
+        """
+mov qword ptr [rip + 0x100], rax
+mov rbx, qword ptr [rip + 0xf9]
+add qword ptr [rip + 0x200], 1
+ret
+""",
+        x86_64,
+        outdir,
+        flags=MEMORY_FLAGS,
+    )
+
+    # The written global is forwarded: remain the incremented global and the return address
+    assert len(find_nodes(graph, OpCodes.LOAD)) == 2
+    assert len(find_nodes(graph, OpCodes.STORE)) == 2
+    (output_rbx,) = [i for i, n in enumerate(graph.nodes) if str(n) == "RBX"]
+    assert data_predecessor_names(graph, output_rbx) == {"RAX"}
+
+
+def test_stack_and_globals_do_not_alias(outdir: Path, x86_64: ArchContext, log):
+    program = make_program_from_asm(
+        """
+mov qword ptr [rsp - 8], rcx
+mov qword ptr [rip + 0x100], rdx
+mov rbx, qword ptr [rsp - 8]
+""",
+        x86_64,
+        outdir,
+    )
+
+    assert len(analyze_stack_memory(program).forwarded_loads) == 1

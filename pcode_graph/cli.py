@@ -21,7 +21,6 @@ Options:
     -b, --base-address <int>    Consider the given assembly starts at given address [Default: 0].
     -D, --dataflow-only         Only extract dataflow graph (and no control flow), this implies -F.
     -F, --flat-cfg              Disable basic block nodes in the graph.
-    -M, --no-memory-analysis    Disable stack memory analysis and keep all LOADs in the graph.
     -o, --output <path>         Where to write the output.
     -h, --help                  This help.
     -d, --debug                 Debug mode: do no catch exceptions.
@@ -35,6 +34,7 @@ from lief import Binary
 import lief
 from loguru import logger
 import pypcode
+from pcode_graph.analysis.passes import run_analyses
 from pcode_graph.arch import Arch
 from pcode_graph.asm import Assembler
 from pcode_graph.characterization import count_edges, get_graph_diameters
@@ -49,7 +49,7 @@ from pcode_graph.lief_importer import (
 from pcode_graph.log import setup_logger
 from pcode_graph.translator import Translator
 from pcode_graph.pcode import dump_operation
-from pcode_graph.analysis import RichPcodeList
+from pcode_graph.analysis.program import Program
 from pcode_graph.maker import MakerFlags, make_graph
 from pcode_graph.view import draw_graph
 
@@ -157,18 +157,18 @@ def main():
             sys.exit(0)
 
         logger.info(f"Analyze {len(operations)} P-Code operations")
-        rpl = RichPcodeList(arch, operations)
+        prg = Program(arch, operations)
+        run_analyses(prg)
 
         if args["table"]:
-            print(rpl.dump())
+            print(prg.dump())
             sys.exit(0)
 
         flags = MakerFlags(
             build_cfg=not args["--dataflow-only"],
-            basic_blocks=not args["--flat-cfg"],
-            memory_analysis=not args["--no-memory-analysis"],
+            basic_blocks=not args["--flat-cfg"],            
         )
-        cdg = make_graph(rpl, flags)
+        cdg = make_graph(prg, flags)
 
         if args["md"]:
             print(str(cdg), file=output)

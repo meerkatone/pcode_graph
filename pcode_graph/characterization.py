@@ -104,11 +104,10 @@ def get_function_characteristics(graph: CDG) -> FunctionCharacteristics:
                     function_characteristics |= FunctionCharacteristics.call
                 elif n.opcode == OpCodes.CBRANCH:
                     function_characteristics |= FunctionCharacteristics.condition
+                elif n.opcode in {OpCodes.LOAD, OpCodes.STORE}:
+                    function_characteristics |= FunctionCharacteristics.memory
 
             case NodeKinds.Phi:
                 function_characteristics |= FunctionCharacteristics.phi
-
-            case NodeKinds.ReadMemory | NodeKinds.WrittenMemory:
-                function_characteristics |= FunctionCharacteristics.memory
 
     return function_characteristics

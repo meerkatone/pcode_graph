@@ -1,3 +1,12 @@
+# 4.0.0
+
+- New memory model to avoid quadratic edges generation in many-stores code:
+   - Remove ReadMemory and WrittenMemory nodes
+   - Now STORE nodes have no more data output: memory writes are implicit
+   - LOAD and STORE nodes are inserted to deal with indirect accesses in Pcode operations
+   - Memory analysis is now run unconditionally
+
+
 # 3.0.2
 
 - Improve simplifier complexity (for graph with many edges.)
