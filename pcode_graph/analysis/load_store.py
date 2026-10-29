@@ -9,7 +9,15 @@ from typing import Any, cast
 
 from pypcode import OpCode, PcodeOp
 
-from .native_pcode import CONST_SPACE, JUMP_OPCODES, RELATIVE_JUMP_OPCODES, UNIQUE_SPACE, SyntheticOperation, SyntheticVarnode, is_data_input
+from .native_pcode import (
+    CONST_SPACE,
+    JUMP_OPCODES,
+    RELATIVE_JUMP_OPCODES,
+    UNIQUE_SPACE,
+    SyntheticOperation,
+    SyntheticVarnode,
+    is_data_input,
+)
 from .program import Program
 
 from .pass_base import PassBase
@@ -48,7 +56,7 @@ class LoadStoreInserter(PassBase):
     def operations(self):
         return self.program.operations
 
-    def __call__(self) -> list[PcodeOp]:
+    def __call__(self):
         jump_targets = {
             index: target
             for index, operation in enumerate(self.operations)
@@ -88,7 +96,9 @@ class LoadStoreInserter(PassBase):
                     jump.opcode, [new_address, *jump.inputs[1:]], jump.output
                 )
 
-        return cast(list[PcodeOp], [op for expansion in expansions for op in expansion])
+        self.program.operations = cast(
+            list[PcodeOp], [op for expansion in expansions for op in expansion]
+        )
 
     def _expand(self, operation: PcodeOp) -> list[Any]:
         """Returns the operations replacing the given one."""

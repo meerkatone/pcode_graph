@@ -251,14 +251,13 @@ mov rbx, qword ptr [rsp-8]
         x86_64,
         outdir,
     )
-    
 
     stores = [
         index
         for index, op in enumerate(program.operations)
         if op.opcode.name == "STORE"
     ]
-    assert list(memory.forwarded_loads.values()) == [[stores[1]]]
+    assert list(program.memory.forwarded_loads.values()) == [[stores[1]]]
 
 
 def test_long_stack_pointer_chain(outdir: Path, x86_64: ArchContext, log):
@@ -268,7 +267,7 @@ def test_long_stack_pointer_chain(outdir: Path, x86_64: ArchContext, log):
         outdir,
     )
 
-    assert len(analyze_stack_memory(program).forwarded_loads) == 1
+    assert len(program.memory.forwarded_loads) == 1
 
 
 @pytest.mark.parametrize(
@@ -293,7 +292,6 @@ ret
 """,
         x86_64,
         outdir,
-        flags=MEMORY_FLAGS,
     )
 
     # The written global is forwarded: remain the incremented global and the return address
@@ -314,4 +312,4 @@ mov rbx, qword ptr [rsp - 8]
         outdir,
     )
 
-    assert len(analyze_stack_memory(program).forwarded_loads) == 1
+    assert len(program.memory.forwarded_loads) == 1

@@ -1,6 +1,5 @@
 from pypcode import OpCode
 
-from pcode_graph.analysis.alias_analysis import MemoryAnalyzer
 from pcode_graph.analysis.load_store import LoadStoreInserter
 from pcode_graph.analysis.passes import run_analyses
 from pcode_graph.analysis.program import Program
@@ -25,6 +24,12 @@ def opcodes(operations: list) -> list[str]:
     return [operation.opcode.name for operation in operations]
 
 
+def insert_loads_and_stores(operations: list, arch: Arch) -> list:
+    program = Program(arch, operations)
+    LoadStoreInserter(program)()
+    return program.operations
+
+
 def test_read_write_in_one_instruction():
     variable = SyntheticVarnode(RAM, 0x1000, 8)
     flag = SyntheticVarnode(REGISTER, 0x200, 1)
@@ -35,7 +40,7 @@ def test_read_write_in_one_instruction():
         SyntheticOperation(OpCode.INT_EQUAL, [variable, constant(0)], flag),
     ]
 
-    result = make_memory_accesses_explicit(operations, Arch.x86_64)  # type: ignore
+    result = insert_loads_and_stores(operations, Arch.x86_64)
 
     assert opcodes(result) == [
         "IMARK",
@@ -100,4 +105,6 @@ def test_code_addresses_are_kept():
         SyntheticOperation(OpCode.BRANCH, [target], None),
     ]
 
-    assert make_memory_accesses_explicit(operations, Arch.x86_64) is operations  # type: ignore
+    result = insert_loads_and_stores(operations, Arch.x86_64)
+
+    assert all(new is old for new, old in zip(result, operations, strict=True))
